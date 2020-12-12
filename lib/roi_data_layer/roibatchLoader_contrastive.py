@@ -10,13 +10,15 @@ import time
 
 import numpy as np
 import torch
+from torch import dtype
 import torch.utils.data as data
 from model.rpn.bbox_transform import bbox_transform_inv, clip_boxes
-from model.utils.augmentation import PhotometricDistort
+from model.utils.augmentation import DataAug_for_SimCLR, PhotometricDistort
 from model.utils.config import cfg
 from PIL import Image
+from torchvision import transforms as trans
 
-from roi_data_layer.minibatch_contrastive import get_minibatch
+from roi_data_layer.minibatch import get_minibatch
 
 
 class roibatchLoader(data.Dataset):
@@ -34,7 +36,9 @@ class roibatchLoader(data.Dataset):
         self.batch_size = batch_size
         self.data_size = len(self.ratio_list)
 
-        self.augment = PhotometricDistort()
+        # self.augment = PhotometricDistort()
+        self.augment = DataAug_for_SimCLR()
+        self.toPIL = trans.ToPILImage(mode="RGB")
 
         # given the ratio_list, we want to make the ratio same for each batch.
         self.ratio_list_batch = torch.Tensor(self.data_size).zero_()
@@ -69,6 +73,7 @@ class roibatchLoader(data.Dataset):
         # skip mean subtraction to adapt it after augmentations
         blobs = get_minibatch(minibatch_db, self._num_classes,
                               subtract=False)
+        # data shabe
         data = torch.from_numpy(blobs['data'])
         im_info = torch.from_numpy(blobs['im_info'])
         # we need to random shuffle the bounding box.
@@ -197,7 +202,7 @@ class roibatchLoader(data.Dataset):
             # check the bounding box:
             not_keep = (gt_boxes[:, 0] == gt_boxes[:, 2]) | (
                 gt_boxes[:, 1] == gt_boxes[:, 3])
-            keep = torch.nonzero(not_keep == 0).view(-1)
+            keep = torch.nonzero(not_keep == 0, as_tuple=False).view(-1)
 
             gt_boxes_padding = torch.FloatTensor(
                 self.max_num_box, gt_boxes.size(1)).zero_()
@@ -208,31 +213,31 @@ class roibatchLoader(data.Dataset):
             else:
                 num_boxes = 0
 
-            # clone for other augment
-            im_data_clone = padding_data.clone()
+            # im_1 = padding_data.clone().cpu().numpy()
+            # im_2 = padding_data.clone().cpu().numpy()
 
-            # convert tensor to numpy array
-            im_data = padding_data.to('cpu').detach().numpy().copy()
-            im_data_clone = im_data_clone.to('cpu').detach().numpy().copy()
+            # im_1 = self.augment(im_1)
+            # im_2 = self.augment(im_2)
+
+            # clone for other augment
+            im_1 = self.toPIL(padding_data.clone().permute(2, 0, 1))
+            im_2 = self.toPIL(padding_data.clone().permute(2, 0, 1))
 
             # augment
-            im_data = self.augment(im_data)
-            im_data_clone = self.augment(im_data_clone)
+            im_1 = self.augment(im_1)
+            im_2 = self.augment(im_2)
 
             # mean subtraction
-            im_data -= cfg.PIXEL_MEANS
-            im_data_clone -= cfg.PIXEL_MEANS
+            im_1 -= cfg.PIXEL_MEANS
+            im_2 -= cfg.PIXEL_MEANS
 
             # covert numpy array to tensor
-            im_data = torch.from_numpy(im_data)
-            im_data_clone = torch.from_numpy(im_data_clone)
-
-            # permute trim_data to adapt to downstream processing
-            im_data = im_data.permute(2, 0, 1).contiguous()
-            im_data_clone = im_data_clone.permute(2, 0, 1).contiguous()
+            # and permute trim_data to adapt to downstream processing
+            im_1 = torch.from_numpy(im_1).permute(2, 0, 1).contiguous()
+            im_2 = torch.from_numpy(im_2).permute(2, 0, 1).contiguous()
             im_info = im_info.view(3)
 
-            return im_data, im_data_clone, im_info, gt_boxes_padding, num_boxes
+            return im_1, im_2, im_info, gt_boxes_padding, num_boxes
         else:
             data = data.permute(0, 3, 1, 2).contiguous().view(3,
                                                               data_height,

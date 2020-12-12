@@ -191,7 +191,7 @@ class roibatchLoader(data.Dataset):
             # check the bounding box:
             not_keep = (gt_boxes[:, 0] == gt_boxes[:, 2]) | (
                 gt_boxes[:, 1] == gt_boxes[:, 3])
-            keep = torch.nonzero(not_keep == 0).view(-1)
+            keep = torch.nonzero(not_keep == 0, as_tuple=False).view(-1)
 
             gt_boxes_padding = torch.FloatTensor(
                 self.max_num_box, gt_boxes.size(1)).zero_()
