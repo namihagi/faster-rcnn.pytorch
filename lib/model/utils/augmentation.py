@@ -9,6 +9,8 @@ import cv2
 import numpy as np
 import torch
 from numpy import random
+from PIL import ImageFilter
+from torchvision import transforms
 
 
 class Compose(object):
@@ -164,3 +166,34 @@ class PhotometricDistort(object):
             distort = Compose(self.pd[1:])
         im = distort(im)
         return self.rand_light_noise(im)
+
+
+class GaussianBlur(object):
+    """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
+
+    def __init__(self, sigma=[.1, 2.]):
+        self.sigma = sigma
+
+    def __call__(self, x):
+        sigma = random.uniform(self.sigma[0], self.sigma[1])
+        x = x.filter(ImageFilter.GaussianBlur(radius=sigma))
+        return x
+
+
+def DataAugmentation(s=1.0):
+    """
+    args:
+        s: the strength of color jitter (max = 1.0)
+    """
+    augment = transforms.Compose([
+        # transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+        transforms.RandomApply([
+            transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
+        ], p=0.8),
+        transforms.RandomGrayscale(p=0.2),
+        transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
+        # transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+    ])
+
+    return augment

@@ -19,7 +19,7 @@ from .proposal_layer import _ProposalLayer
 class _RPN(nn.Module):
     """ region proposal network """
 
-    def __init__(self, din):
+    def __init__(self, din, use_rpn_train=True):
         super(_RPN, self).__init__()
 
         self.din = din  # get depth of input feature map, e.g., 512
@@ -52,6 +52,8 @@ class _RPN(nn.Module):
 
         self.rpn_loss_cls = 0
         self.rpn_loss_box = 0
+
+        self.use_rpn_train = use_rpn_train
 
     @staticmethod
     def reshape(x, d):
@@ -90,7 +92,7 @@ class _RPN(nn.Module):
         self.rpn_loss_box = 0
 
         # generating training labels and build the rpn loss
-        if self.training:
+        if self.training and self.use_rpn_train:
             assert gt_boxes is not None
 
             rpn_data = self.RPN_anchor_target(
@@ -101,7 +103,7 @@ class _RPN(nn.Module):
                 0, 2, 3, 1).contiguous().view(batch_size, -1, 2)
             rpn_label = rpn_data[0].view(batch_size, -1)
 
-            rpn_keep = Variable(rpn_label.view(-1).ne(-1).nonzero().view(-1))
+            rpn_keep = Variable(rpn_label.view(-1).ne(-1).nonzero(as_tuple=False).view(-1))
             rpn_cls_score = torch.index_select(
                 rpn_cls_score.view(-1, 2), 0, rpn_keep)
             rpn_label = torch.index_select(

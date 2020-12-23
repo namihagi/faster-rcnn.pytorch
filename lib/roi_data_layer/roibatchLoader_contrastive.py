@@ -6,23 +6,32 @@ from __future__ import absolute_import, division, print_function
 
 import pdb
 import random
+import sys
 import time
 
 import numpy as np
 import torch
-from torch import dtype
 import torch.utils.data as data
 from model.rpn.bbox_transform import bbox_transform_inv, clip_boxes
-from model.utils.augmentation import DataAug_for_SimCLR, PhotometricDistort
+from model.utils.augmentation import DataAugmentation
 from model.utils.config import cfg
-from PIL import Image
-from torchvision import transforms as trans
+from numpy.lib.twodim_base import tri
+from PIL import Image, ImageOps
+from torch import dtype
+from torchvision import transforms
 
-from roi_data_layer.minibatch import get_minibatch
+from roi_data_layer.minibatch_for_PIL import get_minibatch
+
+
+def scale_to_255_and_bgr(tensor):
+    tensor = tensor * 255
+    return tensor[(2, 1, 0), :, :]
 
 
 class roibatchLoader(data.Dataset):
-    def __init__(self, roidb, ratio_list, ratio_index, batch_size, num_classes, training=True, normalize=None):
+    def __init__(self, roidb, ratio_list, ratio_index, batch_size,
+                 num_classes, training=True, normalize=None,
+                 flip=False, is_augmented=False):
         self._roidb = roidb
         self._num_classes = num_classes
         # we make the height of image consistent to trim_height, trim_width
@@ -36,9 +45,18 @@ class roibatchLoader(data.Dataset):
         self.batch_size = batch_size
         self.data_size = len(self.ratio_list)
 
-        # self.augment = PhotometricDistort()
-        self.augment = DataAug_for_SimCLR()
-        self.toPIL = trans.ToPILImage(mode="RGB")
+        self.flip = flip
+        self.is_augmented = is_augmented
+        if self.is_augmented:
+            self.augment = DataAugmentation()
+        else:
+            self.augment = transforms.Compose([
+                transforms.ToTensor(),
+            ])
+
+        self.pixel_means = torch.tensor(cfg.PIXEL_MEANS).permute(2, 0, 1)
+        # bgr -> rgb
+        self.pixel_means = self.pixel_means[(2, 1, 0), :, :]
 
         # given the ratio_list, we want to make the ratio same for each batch.
         self.ratio_list_batch = torch.Tensor(self.data_size).zero_()
@@ -71,10 +89,23 @@ class roibatchLoader(data.Dataset):
         minibatch_db = [self._roidb[index_ratio]]
 
         # skip mean subtraction to adapt it after augmentations
-        blobs = get_minibatch(minibatch_db, self._num_classes,
-                              subtract=False)
+        blobs = get_minibatch(minibatch_db, self._num_classes)
+
+        data_pil = blobs['data'][0]
+        if self.training and self.flip and torch.rand(1) < 0.5:
+            data_pil = ImageOps.mirror(data_pil)
+
+        # augment
+        if self.is_augmented:
+            data = self.augment(data_pil)
+            data = scale_to_255_and_bgr(data)
+            data_clone = self.augment(data_pil)
+            data_clone = scale_to_255_and_bgr(data_clone)
+        else:
+            data = self.augment(data_pil)
+            data = scale_to_255_and_bgr(data)
+
         # data shabe
-        data = torch.from_numpy(blobs['data'])
         im_info = torch.from_numpy(blobs['im_info'])
         # we need to random shuffle the bounding box.
         data_height, data_width = data.size(1), data.size(2)
@@ -124,8 +155,9 @@ class roibatchLoader(data.Dataset):
                                 )
 
                     # crop the image
-                    data = data[:, y_s:(y_s + trim_size), :, :]
-
+                    data = data[:, y_s:(y_s + trim_size), :]
+                    if self.is_augmented:
+                        data_clone = data_clone[:, y_s:(y_s + trim_size), :]
                     # shift y coordiante of gt_boxes
                     gt_boxes[:, 1] = gt_boxes[:, 1] - float(y_s)
                     gt_boxes[:, 3] = gt_boxes[:, 3] - float(y_s)
@@ -161,8 +193,9 @@ class roibatchLoader(data.Dataset):
                                 x_s = np.random.choice(
                                     range(min_x, min_x + x_s_add))
                     # crop the image
-                    data = data[:, :, x_s:(x_s + trim_size), :]
-
+                    data = data[:, :, x_s:(x_s + trim_size)]
+                    if self.is_augmented:
+                        data_clone = data_clone[:, :, x_s:(x_s + trim_size)]
                     # shift x coordiante of gt_boxes
                     gt_boxes[:, 0] = gt_boxes[:, 0] - float(x_s)
                     gt_boxes[:, 2] = gt_boxes[:, 2] - float(x_s)
@@ -175,25 +208,49 @@ class roibatchLoader(data.Dataset):
                 # this means that data_width < data_height
                 trim_size = int(np.floor(data_width / ratio))
 
-                padding_data = torch.FloatTensor(int(np.ceil(data_width / ratio)),
-                                                 data_width, 3).zero_()
+                h = int(np.ceil(data_width / ratio))
+                padding_data = torch.FloatTensor(3, h, data_width).zero_()
+                padding_data += self.pixel_means
+                padding_data[:, :data_height, :] = data
 
-                padding_data[:data_height, :, :] = data[0]
+                if self.is_augmented:
+                    padding_data_clone = torch.FloatTensor(
+                        3, h, data_width).zero_()
+                    padding_data_clone += self.pixel_means
+                    padding_data_clone[:, :data_height, :] = data_clone
+
                 # update im_info
-                im_info[0, 0] = padding_data.size(0)
+                im_info[0, 0] = padding_data.size(1)
                 # print("height %d %d \n" %(index, anchor_idx))
             elif ratio > 1:
                 # this means that data_width > data_height
                 # if the image need to crop.
-                padding_data = torch.FloatTensor(data_height,
-                                                 int(np.ceil(data_height * ratio)), 3).zero_()
-                padding_data[:, :data_width, :] = data[0]
-                im_info[0, 1] = padding_data.size(1)
+                w = int(np.ceil(data_height * ratio))
+                padding_data = torch.FloatTensor(3, data_height, w).zero_()
+                padding_data += self.pixel_means
+                padding_data[:, :, :data_width] = data
+
+                if self.is_augmented:
+                    padding_data_clone = torch.FloatTensor(
+                        3, data_height, w).zero_()
+                    padding_data_clone += self.pixel_means
+                    padding_data_clone[:, :, :data_width] = data_clone
+
+                im_info[0, 1] = padding_data.size(2)
             else:
                 trim_size = min(data_height, data_width)
-                padding_data = torch.FloatTensor(trim_size,
-                                                 trim_size, 3).zero_()
-                padding_data = data[0][:trim_size, :trim_size, :]
+
+                padding_data = torch.FloatTensor(
+                    3, trim_size, trim_size).zero_()
+                padding_data += self.pixel_means
+                padding_data = data[:, :trim_size, :trim_size]
+
+                if self.is_augmented:
+                    padding_data_clone = torch.FloatTensor(
+                        3, trim_size, trim_size).zero_()
+                    padding_data_clone += self.pixel_means
+                    padding_data_clone = data_clone[:, :trim_size, :trim_size]
+
                 # gt_boxes.clamp_(0, trim_size)
                 gt_boxes[:, :4].clamp_(0, trim_size)
                 im_info[0, 0] = trim_size
@@ -213,35 +270,28 @@ class roibatchLoader(data.Dataset):
             else:
                 num_boxes = 0
 
-            # im_1 = padding_data.clone().cpu().numpy()
-            # im_2 = padding_data.clone().cpu().numpy()
+            padding_data -= self.pixel_means
+            # rgb -> bgr
+            padding_data = padding_data[(2, 1, 0), :, :]
+            if self.is_augmented:
+                padding_data_clone -= self.pixel_means
+                # rgb -> bgr
+                padding_data_clone = padding_data_clone[(2, 1, 0), :, :]
 
-            # im_1 = self.augment(im_1)
-            # im_2 = self.augment(im_2)
-
-            # clone for other augment
-            im_1 = self.toPIL(padding_data.clone().permute(2, 0, 1))
-            im_2 = self.toPIL(padding_data.clone().permute(2, 0, 1))
-
-            # augment
-            im_1 = self.augment(im_1)
-            im_2 = self.augment(im_2)
-
-            # mean subtraction
-            im_1 -= cfg.PIXEL_MEANS
-            im_2 -= cfg.PIXEL_MEANS
-
-            # covert numpy array to tensor
-            # and permute trim_data to adapt to downstream processing
-            im_1 = torch.from_numpy(im_1).permute(2, 0, 1).contiguous()
-            im_2 = torch.from_numpy(im_2).permute(2, 0, 1).contiguous()
             im_info = im_info.view(3)
 
-            return im_1, im_2, im_info, gt_boxes_padding, num_boxes
+            if self.is_augmented:
+                return (padding_data.contiguous(),
+                        padding_data_clone.contiguous(),
+                        im_info, gt_boxes_padding, num_boxes)
+            else:
+                return (padding_data.contiguous(), im_info,
+                        gt_boxes_padding, num_boxes)
         else:
-            data = data.permute(0, 3, 1, 2).contiguous().view(3,
-                                                              data_height,
-                                                              data_width)
+            data = data.contiguous().view(3, data_height, data_width)
+            data -= self.pixel_means
+            # rgb -> bgr
+            data = data[(2, 1, 0), :, :]
             im_info = im_info.view(3)
 
             gt_boxes = torch.FloatTensor([1, 1, 1, 1, 1])

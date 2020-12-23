@@ -15,18 +15,13 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import torchvision.transforms as transforms
 from model.faster_rcnn.resnet import resnet
-from model.faster_rcnn.vgg16 import vgg16
-from model.utils.config import (cfg, cfg_from_file, cfg_from_list,
-                                get_output_dir)
+from model.faster_rcnn_pretrain.vgg16 import vgg16
+from model.utils.config import cfg, cfg_from_file, cfg_from_list
 from model.utils.net_utils import (adjust_learning_rate, clip_gradient,
-                                   load_net, save_checkpoint, save_net,
-                                   weights_normal_init)
+                                   save_checkpoint)
 from roi_data_layer.roibatchLoader_contrastive import roibatchLoader
 from roi_data_layer.roidb import combined_roidb
-from torch import log
 from torch.autograd import Variable
 from torch.utils.data.sampler import Sampler
 
@@ -38,6 +33,9 @@ def parse_args():
     Parse input arguments
     """
     parser = argparse.ArgumentParser(description='Train a Fast R-CNN network')
+    parser.add_argument('--pro_name', dest='pro_name',
+                        help='project name which identifies model params',
+                        type=str)
     parser.add_argument('--dataset', dest='dataset',
                         help='training dataset',
                         default='pascal_voc', type=str)
@@ -75,9 +73,17 @@ def parse_args():
     parser.add_argument('--bs', dest='batch_size',
                         help='batch_size',
                         default=1, type=int)
+    parser.add_argument('--iou_threshold', dest='iou_threshold',
+                        help='the threshold of iou for contrastive learning',
+                        default=0.5, type=float)
     parser.add_argument('--cag', dest='class_agnostic',
                         help='whether perform class_agnostic bbox regression',
                         action='store_true')
+
+# config region proposal network
+    parser.add_argument('--rpn_top_n', dest='rpn_top_n',
+                        help='the number of proposal boxes by RPN',
+                        default=500, type=int)
 
 # config optimization
     parser.add_argument('--o', dest='optimizer',
@@ -151,6 +157,7 @@ class sampler(Sampler):
 
 
 if __name__ == '__main__':
+    init_time = time.time()
 
     args = parse_args()
 
@@ -195,6 +202,9 @@ if __name__ == '__main__':
     if args.set_cfgs is not None:
         cfg_from_list(args.set_cfgs)
 
+    # for pretrain, change RPN_POST_NMS_TOP_N
+    cfg.TRAIN.RPN_POST_NMS_TOP_N = args.rpn_top_n
+
     print('Using config:')
     pprint.pprint(cfg)
     np.random.seed(cfg.RNG_SEED)
@@ -205,43 +215,46 @@ if __name__ == '__main__':
 
     # train set
     # -- Note: Use validation set and disable the flipped to enable faster loading.
-    cfg.TRAIN.USE_FLIPPED = True
+    cfg.TRAIN.USE_FLIPPED = False
     cfg.USE_GPU_NMS = args.cuda
     imdb, roidb, ratio_list, ratio_index = combined_roidb(args.imdb_name)
     train_size = len(roidb)
 
     print('{:d} roidb entries'.format(len(roidb)))
 
-    output_dir = args.save_dir + "/" + args.net + "/" + args.dataset
+    output_dir = os.path.join(
+        args.save_dir, args.pro_name, args.net, args.dataset
+    )
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     sampler_batch = sampler(train_size, args.batch_size)
 
     dataset = roibatchLoader(roidb, ratio_list, ratio_index, args.batch_size,
-                             imdb.num_classes, training=True)
+                             imdb.num_classes, training=True,
+                             flip=True, is_augmented=True)
 
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size,
                                              sampler=sampler_batch, num_workers=args.num_workers)
 
     # initilize the tensor holder here.
-    im_data = torch.FloatTensor(1)
-    im_data_clone = torch.FloatTensor(1)
+    im_data_aug_1 = torch.FloatTensor(1)
+    im_data_aug_2 = torch.FloatTensor(1)
     im_info = torch.FloatTensor(1)
     num_boxes = torch.LongTensor(1)
     gt_boxes = torch.FloatTensor(1)
 
     # ship to cuda
     if args.cuda:
-        im_data = im_data.cuda()
-        im_data_clone = im_data_clone.cuda()
+        im_data_aug_1 = im_data_aug_1.cuda()
+        im_data_aug_2 = im_data_aug_2.cuda()
         im_info = im_info.cuda()
         num_boxes = num_boxes.cuda()
         gt_boxes = gt_boxes.cuda()
 
     # make variable
-    im_data = Variable(im_data)
-    im_data_clone = Variable(im_data_clone)
+    im_data_aug_1 = Variable(im_data_aug_1)
+    im_data_aug_2 = Variable(im_data_aug_2)
     im_info = Variable(im_info)
     num_boxes = Variable(num_boxes)
     gt_boxes = Variable(gt_boxes)
@@ -252,8 +265,11 @@ if __name__ == '__main__':
     # initilize the network here.
     fasterRCNN = None
     if args.net == 'vgg16':
-        fasterRCNN = vgg16(imdb.classes, pretrained=True,
-                           class_agnostic=args.class_agnostic)
+        fasterRCNN = vgg16(imdb.classes, pretrained=False,
+                           class_agnostic=args.class_agnostic,
+                           iou_threshold=args.iou_threshold, fix_backbone=False)
+        # fasterRCNN = vgg16(imdb.classes, pretrained=True,
+        #                    class_agnostic=args.class_agnostic)
     elif args.net == 'res101':
         fasterRCNN = resnet(imdb.classes, 101, pretrained=True,
                             class_agnostic=args.class_agnostic)
@@ -315,13 +331,18 @@ if __name__ == '__main__':
     iters_per_epoch = int(train_size / args.batch_size)
 
     if args.use_tfboard:
-        from tensorboardX import SummaryWriter
-        logger = SummaryWriter("logs")
+        from torch.utils.tensorboard import SummaryWriter
+        log_dir = os.path.join('logs', args.pro_name, 'pretrain')
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        logger = SummaryWriter(log_dir=log_dir)
 
+    global_step = 0
     for epoch in range(args.start_epoch, args.max_epochs + 1):
         # setting to train mode
         fasterRCNN.train()
         loss_temp = 0
+        match_box_hist = None
         start = time.time()
 
         if epoch % (args.lr_decay_step + 1) == 0:
@@ -332,21 +353,35 @@ if __name__ == '__main__':
         for step in range(iters_per_epoch):
             data = next(data_iter)
             with torch.no_grad():
-                im_data.resize_(data[0].size()).copy_(data[0])
-                im_data_clone.resize_(data[1].size()).copy_(data[1])
+                im_data_aug_1.resize_(data[0].size()).copy_(data[0])
+                im_data_aug_2.resize_(data[1].size()).copy_(data[1])
                 im_info.resize_(data[2].size()).copy_(data[2])
                 gt_boxes.resize_(data[3].size()).copy_(data[3])
                 num_boxes.resize_(data[4].size()).copy_(data[4])
 
             fasterRCNN.zero_grad()
-            rois, cls_prob, bbox_pred, \
-                rpn_loss_cls, rpn_loss_box, \
-                RCNN_loss_cls, RCNN_loss_bbox, \
-                rois_label = fasterRCNN(im_data, im_info, gt_boxes, num_boxes)
+            # get rois and pooled features
+            losses, match_sum = fasterRCNN(im_data_aug_1, im_data_aug_2,
+                                           im_info, gt_boxes, num_boxes)
 
-            loss = rpn_loss_cls.mean() + rpn_loss_box.mean() \
-                + RCNN_loss_cls.mean() + RCNN_loss_bbox.mean()
+            loss = losses.mean()
             loss_temp += loss.item()
+            if args.use_tfboard:
+                # add loss to tensorboard
+                loss_item = loss.item()
+                logger.add_scalar('loss_per_step', loss_item,
+                                  global_step=global_step)
+                # add the mean of matched box num
+                match_sum_item = match_sum.float().mean().item()
+                logger.add_scalar('match_box_num_per_step', match_sum_item,
+                                  global_step=global_step)
+
+            if match_box_hist is None:
+                match_box_hist = match_sum.cpu().numpy()
+            else:
+                match_box_hist_tmp = match_sum.cpu().numpy()
+                match_box_hist = np.concatenate([match_box_hist,
+                                                 match_box_hist_tmp])
 
             # backward
             optimizer.zero_grad()
@@ -354,47 +389,25 @@ if __name__ == '__main__':
             if args.net == "vgg16":
                 clip_gradient(fasterRCNN, 10.)
             optimizer.step()
+            global_step += 1
 
             if step % args.disp_interval == 0:
                 end = time.time()
                 if step > 0:
                     loss_temp /= (args.disp_interval + 1)
 
-                if args.mGPUs:
-                    loss_rpn_cls = rpn_loss_cls.mean().item()
-                    loss_rpn_box = rpn_loss_box.mean().item()
-                    loss_rcnn_cls = RCNN_loss_cls.mean().item()
-                    loss_rcnn_box = RCNN_loss_bbox.mean().item()
-                    fg_cnt = torch.sum(rois_label.data.ne(0))
-                    bg_cnt = rois_label.data.numel() - fg_cnt
-                else:
-                    loss_rpn_cls = rpn_loss_cls.item()
-                    loss_rpn_box = rpn_loss_box.item()
-                    loss_rcnn_cls = RCNN_loss_cls.item()
-                    loss_rcnn_box = RCNN_loss_bbox.item()
-                    fg_cnt = torch.sum(rois_label.data.ne(0))
-                    bg_cnt = rois_label.data.numel() - fg_cnt
-
-                print("[session %d][epoch %2d][iter %4d/%4d] loss: %.4f, lr: %.2e"
-                      % (args.session, epoch, step, iters_per_epoch, loss_temp, lr))
-                print("\t\t\tfg/bg=(%d/%d), time cost: %f" %
-                      (fg_cnt, bg_cnt, end - start))
-                print("\t\t\trpn_cls: %.4f, rpn_box: %.4f, rcnn_cls: %.4f, rcnn_box %.4f"
-                      % (loss_rpn_cls, loss_rpn_box, loss_rcnn_cls, loss_rcnn_box))
-
-                if args.use_tfboard:
-                    info = {
-                        'loss': loss_temp,
-                        'loss_rpn_cls': loss_rpn_cls,
-                        'loss_rpn_box': loss_rpn_box,
-                        'loss_rcnn_cls': loss_rcnn_cls,
-                        'loss_rcnn_box': loss_rcnn_box
-                    }
-                    logger.add_scalars("logs_s_{}/losses".format(args.session),
-                                       info, (epoch - 1) * iters_per_epoch + step)
+                print("[session %d][epoch %2d][iter %4d/%4d]"
+                      "loss: %.4f, lr: %.2e, time cost: %f"
+                      % (args.session, epoch, step, iters_per_epoch,
+                         loss_temp, lr, end - start))
 
                 loss_temp = 0
                 start = time.time()
+
+        if args.use_tfboard:
+            # add a histgram of matched box num to tfboard
+            logger.add_histogram('matched_box_num', match_box_hist,
+                                 global_step=epoch)
 
         save_name = os.path.join(output_dir,
                                  'faster_rcnn_{}_{}_{}.pth'.format(args.session, epoch, step))

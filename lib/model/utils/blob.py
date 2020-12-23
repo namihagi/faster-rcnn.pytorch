@@ -7,14 +7,14 @@
 
 """Blob helper functions."""
 
-import numpy as np
 # from scipy.misc import imread, imresize
 import cv2
+import numpy as np
+from model.utils.config import cfg
+from PIL import Image
 
-try:
-    xrange          # Python 2
-except NameError:
-    xrange = range  # Python 3
+# rgb order
+pixel_means = tuple(cfg.PIXEL_MEANS.reshape(-1).astype(np.uint8)[::-1])
 
 
 def im_list_to_blob(ims):
@@ -26,9 +26,28 @@ def im_list_to_blob(ims):
     num_images = len(ims)
     blob = np.zeros((num_images, max_shape[0], max_shape[1], 3),
                     dtype=np.float32)
-    for i in xrange(num_images):
+    for i in range(num_images):
         im = ims[i]
         blob[i, 0:im.shape[0], 0:im.shape[1], :] = im
+
+    return blob
+
+
+def im_list_to_blob_PIL(ims):
+    """Convert a list of images into a network input.
+
+    Assumes images are already prepared (means subtracted, BGR order, ...).
+    """
+    max_shape = np.array([im.size for im in ims]).max(axis=0)
+    num_images = len(ims)
+
+    blob = []
+    for i in range(num_images):
+        im = ims[i]
+        new_im = Image.new("RGB", (max_shape[0], max_shape[1]),
+                           pixel_means)
+        new_im.paste(im, (0, 0))
+        blob.append(new_im)
 
     return blob
 
@@ -52,5 +71,20 @@ def prep_im_for_blob(im, pixel_means,
     # im = imresize(im, im_scale)
     im = cv2.resize(im, None, None, fx=im_scale, fy=im_scale,
                     interpolation=cv2.INTER_LINEAR)
+
+    return im, im_scale
+
+
+def prep_im_for_blob_PIL(im, target_size):
+    """scale an image for use in a blob."""
+
+    im_shape = im.size
+    im_size_min = np.min(im_shape[0:2])
+    im_scale = float(target_size) / float(im_size_min)
+
+    # Prevent the biggest axis from being more than MAX_SIZE
+    new_w = int(np.round(im_shape[0] * im_scale))
+    new_h = int(np.round(im_shape[1] * im_scale))
+    im = im.resize((new_w, new_h), Image.BILINEAR)
 
     return im, im_scale

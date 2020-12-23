@@ -12,13 +12,14 @@ import pdb
 
 import numpy as np
 import numpy.random as npr
-from model.utils.blob import im_list_to_blob, prep_im_for_blob
-from model.utils.config import cfg
 # from scipy.misc import imread
 from imageio import imread
+from model.utils.blob import im_list_to_blob_PIL, prep_im_for_blob_PIL
+from model.utils.config import cfg
+from PIL import Image, ImageOps
 
 
-def get_minibatch(roidb, num_classes, subtract=True):
+def get_minibatch(roidb, num_classes):
     """Given a roidb, construct a minibatch sampled from it."""
     num_images = len(roidb)
     # Sample random scales to use for each image in this batch
@@ -29,7 +30,7 @@ def get_minibatch(roidb, num_classes, subtract=True):
         format(num_images, cfg.TRAIN.BATCH_SIZE)
 
     # Get the input image blob, formatted for caffe
-    im_blob, im_scales = _get_image_blob(roidb, random_scale_inds, subtract)
+    im_blob, im_scales = _get_image_blob(roidb, random_scale_inds)
 
     blobs = {'data': im_blob}
 
@@ -49,7 +50,7 @@ def get_minibatch(roidb, num_classes, subtract=True):
     gt_boxes[:, 4] = roidb[0]['gt_classes'][gt_inds]
     blobs['gt_boxes'] = gt_boxes
     blobs['im_info'] = np.array(
-        [[im_blob.shape[1], im_blob.shape[2], im_scales[0]]],
+        [[im_blob[0].size[1], im_blob[0].size[0], im_scales[0]]],
         dtype=np.float32)
 
     blobs['img_id'] = roidb[0]['img_id']
@@ -57,7 +58,7 @@ def get_minibatch(roidb, num_classes, subtract=True):
     return blobs
 
 
-def _get_image_blob(roidb, scale_inds, subtract=True):
+def _get_image_blob(roidb, scale_inds):
     """Builds an input blob from the images in the roidb at the specified
     scales.
     """
@@ -68,24 +69,21 @@ def _get_image_blob(roidb, scale_inds, subtract=True):
     for i in range(num_images):
         # import cv2
         # im = cv2.imread(roidb[i]['image'])
-        im = imread(roidb[i]['image'])
+        # im = imread(roidb[i]['image'])
+        im = Image.open(roidb[i]['image'])
 
-        if len(im.shape) == 2:
-            im = im[:, :, np.newaxis]
-            im = np.concatenate((im, im, im), axis=2)
-        # flip the channel, since the original one using cv2
-        # rgb -> bgr
-        im = im[:, :, ::-1]
+        if im.mode != "RGB":
+            im = im.convert("RGB")
 
         if roidb[i]['flipped']:
-            im = im[:, ::-1, :]
+            im = ImageOps.mirror(im)
+
         target_size = cfg.TRAIN.SCALES[scale_inds[i]]
-        im, im_scale = prep_im_for_blob(im, cfg.PIXEL_MEANS, target_size,
-                                        cfg.TRAIN.MAX_SIZE, subtract)
+        im, im_scale = prep_im_for_blob_PIL(im, target_size)
         im_scales.append(im_scale)
         processed_ims.append(im)
 
     # Create a blob to hold the input images
-    blob = im_list_to_blob(processed_ims)
+    blob = im_list_to_blob_PIL(processed_ims)
 
     return blob, im_scales

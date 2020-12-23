@@ -206,3 +206,5 @@ lib/pycocotools/_mask.c
 scripts/
 models/
 output/
+logs/
+docker/

@@ -14,7 +14,6 @@ import time
 
 import numpy as np
 import torch
-from torch import log
 import torch.nn as nn
 import torch.optim as optim
 import torchvision.transforms as transforms
@@ -25,8 +24,9 @@ from model.utils.config import (cfg, cfg_from_file, cfg_from_list,
 from model.utils.net_utils import (adjust_learning_rate, clip_gradient,
                                    load_net, save_checkpoint, save_net,
                                    weights_normal_init)
-from roi_data_layer.roibatchLoader import roibatchLoader
+from roi_data_layer.roibatchLoader_contrastive import roibatchLoader
 from roi_data_layer.roidb import combined_roidb
+from torch import log
 from torch.autograd import Variable
 from torch.utils.data.sampler import Sampler
 

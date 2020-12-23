@@ -27,7 +27,7 @@ from model.rpn.bbox_transform import bbox_transform_inv, clip_boxes
 from model.utils.config import (cfg, cfg_from_file, cfg_from_list,
                                 get_output_dir)
 from model.utils.net_utils import load_net, save_net, vis_detections
-from roi_data_layer.roibatchLoader import roibatchLoader
+from roi_data_layer.roibatchLoader_contrastive import roibatchLoader
 from roi_data_layer.roidb import combined_roidb
 from torch.autograd import Variable
 
