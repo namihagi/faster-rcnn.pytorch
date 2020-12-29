@@ -1,6 +1,7 @@
 import pdb
 import random
 import time
+from collections import OrderedDict
 
 import numpy as np
 import torch
@@ -135,6 +136,13 @@ class _fasterRCNN(nn.Module):
         normal_init(self.RCNN_rpn.RPN_bbox_pred, 0, 0.01, cfg.TRAIN.TRUNCATED)
         normal_init(self.RCNN_cls_score, 0, 0.01, cfg.TRAIN.TRUNCATED)
         normal_init(self.RCNN_bbox_pred, 0, 0.001, cfg.TRAIN.TRUNCATED)
+
+    def load_weights_by_contrastive(self, state_dict):
+        tmp_dict = OrderedDict({
+            k.replace('RCNN_base.', ''): v for k, v in state_dict.items() if "RCNN_base" in k
+        })
+
+        self.RCNN_base.load_state_dict(tmp_dict)
 
     def create_architecture(self):
         self._init_modules()

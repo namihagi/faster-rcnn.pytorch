@@ -38,6 +38,9 @@ def parse_args():
     Parse input arguments
     """
     parser = argparse.ArgumentParser(description='Train a Fast R-CNN network')
+    parser.add_argument('--pro_name', dest='pro_name',
+                        help='project name which identifies model params',
+                        type=str)
     parser.add_argument('--dataset', dest='dataset',
                         help='training dataset',
                         default='pascal_voc', type=str)
@@ -111,6 +114,14 @@ def parse_args():
     parser.add_argument('--checkpoint', dest='checkpoint',
                         help='checkpoint to load model',
                         default=0, type=int)
+# load checkpoint of contrastive learning
+    parser.add_argument('--pretrain', dest='pretrain',
+                        help='load chechpoint of contrastive pre-training',
+                        action='store_true')
+    parser.add_argument('--contrastive_ckpt_path', dest='contrastive_ckpt_path',
+                        help='path to checkpoint of contrastive pre-training',
+                        default=None, type=str)
+
 # log and diaplay
     parser.add_argument('--use_tfb', dest='use_tfboard',
                         help='whether use tensorboard',
@@ -212,7 +223,9 @@ if __name__ == '__main__':
 
     print('{:d} roidb entries'.format(len(roidb)))
 
-    output_dir = args.save_dir + "/" + args.net + "/" + args.dataset
+    output_dir = os.path.join(
+        args.save_dir, args.pro_name, args.net, args.dataset
+    )
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -306,14 +319,26 @@ if __name__ == '__main__':
             cfg.POOLING_MODE = checkpoint['pooling_mode']
         print("loaded checkpoint %s" % (load_name))
 
+    if args.pretrain:
+        assert args.contrastive_ckpt_path is not None
+
+        load_name = args.contrastive_ckpt_path
+        print("loading checkpoint by contrastive learning: %s" % (load_name))
+        checkpoint = torch.load(load_name)
+        fasterRCNN.load_weights_by_contrastive(checkpoint['model'])
+        print("loaded checkpoint by contrastive learning: %s" % (load_name))
+
     if args.mGPUs:
         fasterRCNN = nn.DataParallel(fasterRCNN)
 
     iters_per_epoch = int(train_size / args.batch_size)
 
     if args.use_tfboard:
-        from tensorboardX import SummaryWriter
-        logger = SummaryWriter("logs")
+        from torch.utils.tensorboard import SummaryWriter
+        log_dir = os.path.join('logs', args.pro_name, 'train')
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        logger = SummaryWriter(log_dir=log_dir)
 
     for epoch in range(args.start_epoch, args.max_epochs + 1):
         # setting to train mode

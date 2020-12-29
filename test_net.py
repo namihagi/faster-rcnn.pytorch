@@ -44,6 +44,9 @@ def parse_args():
     Parse input arguments
     """
     parser = argparse.ArgumentParser(description='Train a Fast R-CNN network')
+    parser.add_argument('--pro_name', dest='pro_name',
+                        help='project name which identifies model params',
+                        type=str)
     parser.add_argument('--dataset', dest='dataset',
                         help='training dataset',
                         default='pascal_voc', type=str)
@@ -149,7 +152,9 @@ if __name__ == '__main__':
 
     print('{:d} roidb entries'.format(len(roidb)))
 
-    input_dir = args.load_dir + "/" + args.net + "/" + args.dataset
+    input_dir = os.path.join(
+        args.load_dir, args.pro_name, args.net, args.dataset
+    )
     if not os.path.exists(input_dir):
         raise Exception(
             'There is no input directory for loading network from ' + input_dir)

@@ -18,7 +18,7 @@ from torch.autograd import Variable
 
 class vgg16(_pretrainedNet):
     def __init__(self, classes, pretrained=False,
-                 class_agnostic=False, fix_backbone=False,
+                 class_agnostic=False, fix_backbone=True,
                  temperature=0.1, iou_threshold=0.7):
 
         self.model_path = 'data/pretrained_model/vgg16_caffe.pth'
