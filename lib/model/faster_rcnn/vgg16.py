@@ -17,11 +17,13 @@ from torch.autograd import Variable
 
 
 class vgg16(_fasterRCNN):
-    def __init__(self, classes, pretrained=False, class_agnostic=False):
+    def __init__(self, classes, pretrained=False,
+                 class_agnostic=False, fix_backbone=True):
         self.model_path = 'data/pretrained_model/vgg16_caffe.pth'
         self.dout_base_model = 512
         self.pretrained = pretrained
         self.class_agnostic = class_agnostic
+        self.fix_backbone = fix_backbone
 
         _fasterRCNN.__init__(self, classes, class_agnostic)
 
@@ -44,9 +46,10 @@ class vgg16(_fasterRCNN):
         )
 
         # Fix the layers before conv3:
-        for layer in range(10):
-            for p in self.RCNN_base[layer].parameters():
-                p.requires_grad = False
+        if self.fix_backbone:
+            for layer in range(10):
+                for p in self.RCNN_base[layer].parameters():
+                    p.requires_grad = False
 
         # self.RCNN_base = _RCNN_base(vgg.features, self.classes, self.dout_base_model)
 

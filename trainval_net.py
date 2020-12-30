@@ -81,6 +81,9 @@ def parse_args():
     parser.add_argument('--cag', dest='class_agnostic',
                         help='whether perform class_agnostic bbox regression',
                         action='store_true')
+    parser.add_argument('--not_fix_bb', dest='not_fix_bb',
+                        help='whether weights of backbone is fixed',
+                        action='store_true')
 
 # config optimization
     parser.add_argument('--o', dest='optimizer',
@@ -125,7 +128,7 @@ def parse_args():
 # log and diaplay
     parser.add_argument('--use_tfb', dest='use_tfboard',
                         help='whether use tensorboard',
-                        action='store_true')
+                        action='store_false')
 
     args = parser.parse_args()
     return args
@@ -263,7 +266,8 @@ if __name__ == '__main__':
     fasterRCNN = None
     if args.net == 'vgg16':
         fasterRCNN = vgg16(imdb.classes, pretrained=True,
-                           class_agnostic=args.class_agnostic)
+                           class_agnostic=args.class_agnostic,
+                           fix_backbone=args.not_fix_bb)
     elif args.net == 'res101':
         fasterRCNN = resnet(imdb.classes, 101, pretrained=True,
                             class_agnostic=args.class_agnostic)
