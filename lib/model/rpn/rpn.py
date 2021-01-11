@@ -103,7 +103,8 @@ class _RPN(nn.Module):
                 0, 2, 3, 1).contiguous().view(batch_size, -1, 2)
             rpn_label = rpn_data[0].view(batch_size, -1)
 
-            rpn_keep = Variable(rpn_label.view(-1).ne(-1).nonzero(as_tuple=False).view(-1))
+            rpn_keep = Variable(
+                rpn_label.view(-1).ne(-1).nonzero(as_tuple=False).view(-1))
             rpn_cls_score = torch.index_select(
                 rpn_cls_score.view(-1, 2), 0, rpn_keep)
             rpn_label = torch.index_select(
@@ -122,5 +123,8 @@ class _RPN(nn.Module):
 
             self.rpn_loss_box = _smooth_l1_loss(rpn_bbox_pred, rpn_bbox_targets, rpn_bbox_inside_weights,
                                                 rpn_bbox_outside_weights, sigma=3, dim=[1, 2, 3])
+
+            self.rpn_loss_cls = self.rpn_loss_cls.unsqueeze(0)
+            self.rpn_loss_bbox = self.rpn_loss_bbox.unsqueeze(0)
 
         return rois, self.rpn_loss_cls, self.rpn_loss_box

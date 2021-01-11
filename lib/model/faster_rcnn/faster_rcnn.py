@@ -1,5 +1,6 @@
 import pdb
 import random
+import sys
 import time
 from collections import OrderedDict
 
@@ -108,10 +109,12 @@ class _fasterRCNN(nn.Module):
         if self.training:
             # classification loss
             RCNN_loss_cls = F.cross_entropy(cls_score, rois_label)
+            RCNN_loss_cls = RCNN_loss_cls.unsqueeze(0)
 
             # bounding box regression L1 loss
             RCNN_loss_bbox = _smooth_l1_loss(
                 bbox_pred, rois_target, rois_inside_ws, rois_outside_ws)
+            RCNN_loss_bbox = RCNN_loss_bbox.unsqueeze(0)
 
         cls_prob = cls_prob.view(batch_size, rois.size(1), -1)
         bbox_pred = bbox_pred.view(batch_size, rois.size(1), -1)
