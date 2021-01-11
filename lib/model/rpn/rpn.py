@@ -125,6 +125,6 @@ class _RPN(nn.Module):
                                                 rpn_bbox_outside_weights, sigma=3, dim=[1, 2, 3])
 
             self.rpn_loss_cls = self.rpn_loss_cls.unsqueeze(0)
-            self.rpn_loss_bbox = self.rpn_loss_bbox.unsqueeze(0)
+            self.rpn_loss_box = self.rpn_loss_box.unsqueeze(0)
 
         return rois, self.rpn_loss_cls, self.rpn_loss_box
