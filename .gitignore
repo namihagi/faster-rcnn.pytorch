@@ -203,8 +203,8 @@ lib/model/utils/bbox.c
 lib/pycocotools/_mask.c
 
 # new by namihagi
-scripts/
-models/
-output/
-logs/
-docker/
+scripts
+models
+output
+logs
+docker
