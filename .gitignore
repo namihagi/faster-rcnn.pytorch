@@ -202,7 +202,8 @@ caffe2.egg-info
 lib/model/utils/bbox.c
 lib/pycocotools/_mask.c
 
-# new by namihagi
+# added by namihagi
+data
 scripts
 models
 output
