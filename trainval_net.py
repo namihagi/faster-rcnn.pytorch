@@ -81,9 +81,13 @@ def parse_args():
     parser.add_argument('--cag', dest='class_agnostic',
                         help='whether perform class_agnostic bbox regression',
                         action='store_true')
-    parser.add_argument('--not_fix_bb', dest='not_fix_bb',
+    parser.add_argument('--not_fix_backbone', dest='not_fix_backbone',
                         help='whether weights of backbone is fixed',
-                        action='store_true')
+                        action='store_false')
+    parser.add_argument('--without_IM_pretrain',
+                        dest='without_IM_pretrain',
+                        help='whether backbone weights pretrained by ImageNet is loaded',
+                        action='store_false')
 
 # config optimization
     parser.add_argument('--o', dest='optimizer',
@@ -117,9 +121,13 @@ def parse_args():
     parser.add_argument('--checkpoint', dest='checkpoint',
                         help='checkpoint to load model',
                         default=0, type=int)
+
 # load checkpoint of contrastive learning
-    parser.add_argument('--pretrain', dest='pretrain',
-                        help='load chechpoint of contrastive pre-training',
+    parser.add_argument('--contrastive_backbone', dest='contrastive_backbone',
+                        help='load chechpoint of contrastive pre-trained backbone',
+                        action='store_true')
+    parser.add_argument('--contrastive_RPN', dest='contrastive_RPN',
+                        help='load chechpoint of contrastive pre-trained RPN',
                         action='store_true')
     parser.add_argument('--contrastive_ckpt_path', dest='contrastive_ckpt_path',
                         help='path to checkpoint of contrastive pre-training',
@@ -128,7 +136,7 @@ def parse_args():
 # log and diaplay
     parser.add_argument('--use_tfb', dest='use_tfboard',
                         help='whether use tensorboard',
-                        action='store_false')
+                        action='store_true')
 
     args = parser.parse_args()
     return args
@@ -265,9 +273,10 @@ if __name__ == '__main__':
     # initilize the network here.
     fasterRCNN = None
     if args.net == 'vgg16':
-        fasterRCNN = vgg16(imdb.classes, pretrained=True,
+        fasterRCNN = vgg16(imdb.classes,
+                           pretrained=args.without_IM_pretrain,
                            class_agnostic=args.class_agnostic,
-                           fix_backbone=args.not_fix_bb)
+                           fix_backbone=args.not_fix_backbone)
     elif args.net == 'res101':
         fasterRCNN = resnet(imdb.classes, 101, pretrained=True,
                             class_agnostic=args.class_agnostic)
@@ -323,14 +332,21 @@ if __name__ == '__main__':
             cfg.POOLING_MODE = checkpoint['pooling_mode']
         print("loaded checkpoint %s" % (load_name))
 
-    if args.pretrain:
+    if args.contrastive_backbone:
         assert args.contrastive_ckpt_path is not None
 
         load_name = args.contrastive_ckpt_path
-        print("loading checkpoint by contrastive learning: %s" % (load_name))
+        print("loading contrastive pre-trained backbone weights: %s" % (load_name))
         checkpoint = torch.load(load_name)
-        fasterRCNN.load_weights_by_contrastive(checkpoint['model'])
-        print("loaded checkpoint by contrastive learning: %s" % (load_name))
+        fasterRCNN.load_contrastive_backbone(checkpoint['model'])
+
+    if args.contrastive_RPN:
+        assert args.contrastive_ckpt_path is not None
+
+        load_name = args.contrastive_ckpt_path
+        print("loading contrastive pre-trained RPN weights: %s" % (load_name))
+        checkpoint = torch.load(load_name)
+        fasterRCNN.load_contrastive_RPN(checkpoint['model'])
 
     if args.mGPUs:
         fasterRCNN = nn.DataParallel(fasterRCNN)

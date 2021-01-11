@@ -39,6 +39,9 @@ def parse_args():
     parser.add_argument('--dataset', dest='dataset',
                         help='training dataset',
                         default='pascal_voc', type=str)
+    parser.add_argument('--anchor', dest='anchor',
+                        help='when dataset is coco, you can use anchor settings for pasval_voc or coco',
+                        default=None, type=str)
     parser.add_argument('--net', dest='net',
                         help='vgg16, res101',
                         default='vgg16', type=str)
@@ -79,6 +82,9 @@ def parse_args():
     parser.add_argument('--cag', dest='class_agnostic',
                         help='whether perform class_agnostic bbox regression',
                         action='store_true')
+    parser.add_argument('--not_fix_backbone', dest='not_fix_backbone',
+                        help='whether weights of backbone is fixed',
+                        action='store_false')
 
 # config region proposal network
     parser.add_argument('--rpn_top_n', dest='rpn_top_n',
@@ -177,8 +183,14 @@ if __name__ == '__main__':
     elif args.dataset == "coco":
         args.imdb_name = "coco_2014_train+coco_2014_valminusminival"
         args.imdbval_name = "coco_2014_minival"
-        args.set_cfgs = ['ANCHOR_SCALES', '[4, 8, 16, 32]',
-                         'ANCHOR_RATIOS', '[0.5,1,2]', 'MAX_NUM_GT_BOXES', '50']
+        if args.anchor == "coco":
+            args.set_cfgs = ['ANCHOR_SCALES', '[4, 8, 16, 32]',
+                             'ANCHOR_RATIOS', '[0.5,1,2]', 'MAX_NUM_GT_BOXES', '50']
+        elif args.anchor == "pascal_voc":
+            args.set_cfgs = ['ANCHOR_SCALES', '[8, 16, 32]',
+                             'ANCHOR_RATIOS', '[0.5,1,2]', 'MAX_NUM_GT_BOXES', '50']
+        else:
+            assert False, "you need --anchor option"
     elif args.dataset == "imagenet":
         args.imdb_name = "imagenet_train"
         args.imdbval_name = "imagenet_val"
@@ -265,11 +277,11 @@ if __name__ == '__main__':
     # initilize the network here.
     fasterRCNN = None
     if args.net == 'vgg16':
-        fasterRCNN = vgg16(imdb.classes, pretrained=False,
+        fasterRCNN = vgg16(imdb.classes,
+                           pretrained=args.not_load_pretrained_backbone,
                            class_agnostic=args.class_agnostic,
-                           iou_threshold=args.iou_threshold, fix_backbone=False)
-        # fasterRCNN = vgg16(imdb.classes, pretrained=True,
-        #                    class_agnostic=args.class_agnostic)
+                           iou_threshold=args.iou_threshold,
+                           fix_backbone=args.not_fix_backbone)
     elif args.net == 'res101':
         fasterRCNN = resnet(imdb.classes, 101, pretrained=True,
                             class_agnostic=args.class_agnostic)
