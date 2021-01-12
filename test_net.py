@@ -13,7 +13,6 @@ import pprint
 import sys
 import time
 
-
 import cv2
 import numpy as np
 import torch
@@ -61,6 +60,10 @@ def parse_args():
                         nargs=argparse.REMAINDER)
     parser.add_argument('--load_dir', dest='load_dir',
                         help='directory to load models', default="models",
+                        type=str)
+    parser.add_argument('--save_dir', dest='save_dir',
+                        help='directory to save result pkl',
+                        default="results",
                         type=str)
     parser.add_argument('--cuda', dest='cuda',
                         help='whether use CUDA',
@@ -227,7 +230,14 @@ if __name__ == '__main__':
     all_boxes = [[[] for _ in xrange(num_images)]
                  for _ in xrange(imdb.num_classes)]
 
-    output_dir = get_output_dir(imdb, save_name)
+    # output_dir = get_output_dir(imdb, save_name)
+    output_dir = os.path.join(
+        args.save_dir, args.pro_name,
+        "{}_{}_{}".format(args.checksession, args.checkepoch, args.checkpoint),
+        args.net, args.dataset
+    )
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     dataset = roibatchLoader(roidb, ratio_list, ratio_index, 1,
                              imdb.num_classes, training=False, normalize=False)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1,
@@ -333,7 +343,7 @@ if __name__ == '__main__':
         if vis:
             cv2.imwrite('result.png', im2show)
             pdb.set_trace()
-            #cv2.imshow('test', im2show)
+            # cv2.imshow('test', im2show)
             # cv2.waitKey(0)
 
     with open(det_file, 'wb') as f:
