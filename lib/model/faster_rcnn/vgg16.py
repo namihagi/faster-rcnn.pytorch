@@ -47,6 +47,7 @@ class vgg16(_fasterRCNN):
 
         # Fix the layers before conv3:
         if self.fix_backbone:
+            print("fixed backbone")
             for layer in range(10):
                 for p in self.RCNN_base[layer].parameters():
                     p.requires_grad = False
