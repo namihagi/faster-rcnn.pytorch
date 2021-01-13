@@ -85,6 +85,10 @@ def parse_args():
     parser.add_argument('--not_fix_backbone', dest='not_fix_backbone',
                         help='whether weights of backbone is fixed',
                         action='store_false')
+    parser.add_argument('--without_IN_pretrain',
+                        dest='without_IN_pretrain',
+                        help='whether backbone weights pretrained by ImageNet is loaded',
+                        action='store_false')
 
 # config region proposal network
     parser.add_argument('--rpn_top_n', dest='rpn_top_n',
@@ -278,7 +282,7 @@ if __name__ == '__main__':
     fasterRCNN = None
     if args.net == 'vgg16':
         fasterRCNN = vgg16(imdb.classes,
-                           pretrained=args.not_load_pretrained_backbone,
+                           pretrained=args.without_IN_pretrain,
                            class_agnostic=args.class_agnostic,
                            iou_threshold=args.iou_threshold,
                            fix_backbone=args.not_fix_backbone)
