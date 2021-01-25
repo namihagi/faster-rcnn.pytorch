@@ -2,6 +2,7 @@ import pdb
 import random
 import sys
 import time
+from contrastive.cosine_similarity import cosine_similarity_for_grad_stop
 
 import numpy as np
 import torch
@@ -49,8 +50,6 @@ class _pretrainedNet(nn.Module):
         self.contrastive_loss_fn = ContrastiveLossForRoI(iou_threshold)
 
     def forward(self, im_aug_1, im_aug_2, im_info, gt_boxes, num_boxes):
-        batch_size = im_aug_1.size(0)
-
         im_info = im_info.data
         gt_boxes = gt_boxes.data
         num_boxes = num_boxes.data
@@ -64,59 +63,39 @@ class _pretrainedNet(nn.Module):
         # roi shape: [batch_size, RPN_POST_NMS_TOP_N, 5]
         rois_aug_1, _, _ = self.RCNN_rpn(base_feat_aug_1, im_info,
                                          gt_boxes, num_boxes)
-        rois_aug_2, _, _ = self.RCNN_rpn(base_feat_aug_2, im_info,
-                                         gt_boxes, num_boxes)
 
         rois_aug_1 = Variable(rois_aug_1)
-        rois_aug_2 = Variable(rois_aug_2)
         # do roi pooling based on predicted rois
 
+        # pooling by the same roi
         if cfg.POOLING_MODE == 'align':
             pooled_feat_1 = self.RCNN_roi_align(base_feat_aug_1,
                                                 rois_aug_1.view(-1, 5))
             pooled_feat_2 = self.RCNN_roi_align(base_feat_aug_2,
-                                                rois_aug_2.view(-1, 5))
+                                                rois_aug_1.view(-1, 5))
         elif cfg.POOLING_MODE == 'pool':
             pooled_feat_1 = self.RCNN_roi_pool(base_feat_aug_1,
                                                rois_aug_1.view(-1, 5))
             pooled_feat_2 = self.RCNN_roi_pool(base_feat_aug_2,
-                                               rois_aug_2.view(-1, 5))
+                                               rois_aug_1.view(-1, 5))
 
         # projection head for contrastive learning
         # for aug_1
         z_feat_1 = self.projection_head(pooled_feat_1)
         p_feat_1 = self.pred_mlp(z_feat_1)
 
-        # reshape (batch_size, max_box_num, out_dim)
-        out_dim = z_feat_1.size(-1)
-        z_feat_1 = z_feat_1.view(batch_size, -1, out_dim)
-        out_dim = p_feat_1.size(-1)
-        p_feat_1 = p_feat_1.view(batch_size, -1, out_dim)
-
         # for aug_2
         z_feat_2 = self.projection_head(pooled_feat_2)
         p_feat_2 = self.pred_mlp(z_feat_2)
 
-        # reshape (batch_size, max_box_num, out_dim)
-        out_dim = z_feat_2.size(-1)
-        z_feat_2 = z_feat_2.view(batch_size, -1, out_dim)
-        out_dim = p_feat_2.size(-1)
-        p_feat_2 = p_feat_2.view(batch_size, -1, out_dim)
-
-        # calculate iou
-        iou = bbox_overlaps_batch_for_contrastive(rois_aug_1, rois_aug_2)
-
         # calculate cosine similarity
-        loss_1, match_num_1 = self.contrastive_loss_fn(p_feat_1, z_feat_1,
-                                                       p_feat_2, z_feat_2, iou)
-        loss_2, match_num_2 = self.contrastive_loss_fn(p_feat_2, z_feat_2,
-                                                       p_feat_1, z_feat_1,
-                                                       iou.transpose(1, 2))
+        loss_1 = cosine_similarity_for_grad_stop(p_feat_1,
+                                                 z_feat_2)
+        loss_2 = cosine_similarity_for_grad_stop(p_feat_2,
+                                                 z_feat_1)
+        loss = loss_1 / 2 + loss_2 / 2
 
-        loss = loss_1 + loss_2
-        match_num = torch.cat([match_num_1, match_num_2])
-
-        return loss, match_num
+        return loss
 
     def _init_weights(self):
         def normal_init(m, mean, stddev, truncated=False):

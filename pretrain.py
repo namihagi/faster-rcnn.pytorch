@@ -391,8 +391,8 @@ if __name__ == '__main__':
 
             fasterRCNN.zero_grad()
             # get rois and pooled features
-            losses, match_sum = fasterRCNN(im_data_aug_1, im_data_aug_2,
-                                           im_info, gt_boxes, num_boxes)
+            losses = fasterRCNN(im_data_aug_1, im_data_aug_2,
+                                im_info, gt_boxes, num_boxes)
 
             loss = losses.mean()
             loss_temp += loss.item()
@@ -401,17 +401,6 @@ if __name__ == '__main__':
                 loss_item = loss.item()
                 logger.add_scalar('loss_per_step', loss_item,
                                   global_step=global_step)
-                # add the mean of matched box num
-                match_sum_item = match_sum.float().mean().item()
-                logger.add_scalar('match_box_num_per_step', match_sum_item,
-                                  global_step=global_step)
-
-            if match_box_hist is None:
-                match_box_hist = match_sum.cpu().numpy()
-            else:
-                match_box_hist_tmp = match_sum.cpu().numpy()
-                match_box_hist = np.concatenate([match_box_hist,
-                                                 match_box_hist_tmp])
 
             # backward
             optimizer.zero_grad()
@@ -436,11 +425,6 @@ if __name__ == '__main__':
 
         if args.scheduler:
             scheduler.step()
-
-        if args.use_tfboard:
-            # add a histgram of matched box num to tfboard
-            logger.add_histogram('matched_box_num', match_box_hist,
-                                 global_step=epoch)
 
         save_name = os.path.join(output_dir,
                                  'faster_rcnn_{}_{}_{}.pth'.format(args.session, epoch, step))
