@@ -35,4 +35,4 @@ def cosine_similarity_for_grad_stop(p, z):
 
     p = F.normalize(p, dim=-1)
     z = F.normalize(z, dim=-1)
-    return -(p * z).sum(dim=1)
+    return -(p * z).sum(dim=1).mean()
