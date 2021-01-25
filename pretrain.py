@@ -22,6 +22,7 @@ from model.utils.net_utils import (adjust_learning_rate, clip_gradient,
                                    save_checkpoint)
 from roi_data_layer.roibatchLoader_contrastive import roibatchLoader
 from roi_data_layer.roidb import combined_roidb
+from torch import optim
 from torch.autograd import Variable
 from torch.utils.data.sampler import Sampler
 
@@ -108,6 +109,9 @@ def parse_args():
     parser.add_argument('--lr_decay_gamma', dest='lr_decay_gamma',
                         help='learning rate decay ratio',
                         default=0.1, type=float)
+    parser.add_argument('--scheduler', dest='scheduler',
+                        help='whether use lr scheduler',
+                        action='store_true')
 
 # set training session
     parser.add_argument('--s', dest='session',
@@ -235,6 +239,7 @@ if __name__ == '__main__':
     cfg.USE_GPU_NMS = args.cuda
     imdb, roidb, ratio_list, ratio_index = combined_roidb(args.imdb_name)
     train_size = len(roidb)
+    iters_per_epoch = int(train_size / args.batch_size)
 
     print('{:d} roidb entries'.format(len(roidb)))
 
@@ -319,13 +324,24 @@ if __name__ == '__main__':
     if args.cuda:
         fasterRCNN.cuda()
 
-    optimizer = None
+    # optimizer
     if args.optimizer == "adam":
         lr = lr * 0.1
-        optimizer = torch.optim.Adam(params)
+        optimizer = optim.Adam(params)
 
     elif args.optimizer == "sgd":
-        optimizer = torch.optim.SGD(params, momentum=cfg.TRAIN.MOMENTUM)
+        optimizer = optim.SGD(params, momentum=cfg.TRAIN.MOMENTUM,
+                              weight_decay=0.0001)
+
+    else:
+        raise NotImplementedError
+
+    # scheduler
+    if args.scheduler:
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer,
+                                                         T_max=iters_per_epoch,
+                                                         eta_min=0,
+                                                         last_epoch=-1)
 
     if args.resume:
         load_name = os.path.join(output_dir,
@@ -344,8 +360,6 @@ if __name__ == '__main__':
     if args.mGPUs:
         fasterRCNN = nn.DataParallel(fasterRCNN)
 
-    iters_per_epoch = int(train_size / args.batch_size)
-
     if args.use_tfboard:
         from torch.utils.tensorboard import SummaryWriter
         log_dir = os.path.join('logs', args.pro_name, 'pretrain')
@@ -361,9 +375,9 @@ if __name__ == '__main__':
         match_box_hist = None
         start = time.time()
 
-        if epoch % (args.lr_decay_step + 1) == 0:
-            adjust_learning_rate(optimizer, args.lr_decay_gamma)
-            lr *= args.lr_decay_gamma
+        # if epoch % (args.lr_decay_step + 1) == 0:
+        #     adjust_learning_rate(optimizer, args.lr_decay_gamma)
+        #     lr *= args.lr_decay_gamma
 
         data_iter = iter(dataloader)
         for step in range(iters_per_epoch):
@@ -419,6 +433,9 @@ if __name__ == '__main__':
 
                 loss_temp = 0
                 start = time.time()
+
+        if args.scheduler:
+            scheduler.step()
 
         if args.use_tfboard:
             # add a histgram of matched box num to tfboard
