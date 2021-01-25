@@ -1,7 +1,12 @@
+"""
+this code is refered to https://github.com/PatrickHua/SimSiam
+"""
+
 import torch
+import torch.nn.functional as F
 
 
-def cosine_similarity_for_all_pair(a, b, eps=1e-8):
+def cosine_similarity_for_all_pair(a, b, negative=True):
     """
     args:
         a: a tensor (batch_size, box_num1, feature_dim)
@@ -9,10 +14,25 @@ def cosine_similarity_for_all_pair(a, b, eps=1e-8):
     return:
         cosine similarity matrix: (batch_size, box_num1, box_num2)
     """
-    a_base = a.norm(dim=-1, keepdim=True)
-    b_base = b.norm(dim=-1, keepdim=True)
+    a_norm = F.normalize(a, dim=-1)
+    b_norm = F.normalize(b, dim=-1)
 
-    a_norm = a / torch.max(a_base, eps * torch.ones_like(a_base))
-    b_norm = b / torch.max(b_base, eps * torch.ones_like(b_base))
     sim_mt = torch.bmm(a_norm, b_norm.transpose(1, 2))
+    if negative:
+        sim_mt = -1 * sim_mt
     return sim_mt
+
+
+def cosine_similarity_for_grad_stop(p, z):
+    """
+    args:
+        p: a tensor of features (num_of_boxes, feat_dim)
+        z: a tensor of features (num_of_boxes, feat_dim)
+    return:
+        negative cosine similarity between p and z
+    """
+    z = z.detach()
+
+    p = F.normalize(p, dim=-1)
+    z = F.normalize(z, dim=-1)
+    return -(p * z).sum(dim=1)

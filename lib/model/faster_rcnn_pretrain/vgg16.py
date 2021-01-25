@@ -12,6 +12,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+from model.faster_rcnn_pretrain.head import prediction_MLP, projection_MLP
 from model.faster_rcnn_pretrain.pretrained_net import _pretrainedNet
 from torch.autograd import Variable
 
@@ -66,13 +67,19 @@ class vgg16(_pretrainedNet):
         # else:
         #     self.RCNN_bbox_pred = nn.Linear(4096, 4 * self.n_classes)
 
-        feat_dim = 512
-        self.proj_1 = nn.Linear(feat_dim, feat_dim)
-        self.proj_2 = nn.Linear(feat_dim, 128)
+        fdim = 512
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.proj_mlp = projection_MLP(in_dim=fdim,
+                                       hidden_dim=fdim,
+                                       out_dim=fdim)
 
-    def _head_to_tail(self, pool5):
+        hidden_dim = 128
+        self.pred_mlp = prediction_MLP(in_dim=fdim,
+                                       hidden_dim=hidden_dim,
+                                       out_dim=fdim)
 
-        pool5_flat = pool5.view(pool5.size(0), -1)
-        fc7 = self.RCNN_top(pool5_flat)
-
-        return fc7
+    def projection_head(self, feat):
+        feat = self.avgpool(feat)
+        feat = torch.flatten(feat, 1)
+        feat = self.proj_mlp(feat)
+        return feat

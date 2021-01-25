@@ -85,33 +85,33 @@ class _pretrainedNet(nn.Module):
 
         # projection head for contrastive learning
         # for aug_1
-        z_feat_1 = F.avg_pool2d(pooled_feat_1, pooled_feat_1.size(2))
-        z_feat_1 = z_feat_1.view(z_feat_1.size(0), -1)
-        z_feat_1 = F.relu(self.proj_1(z_feat_1))
-        z_feat_1 = self.proj_2(z_feat_1)
+        z_feat_1 = self.projection_head(pooled_feat_1)
+        p_feat_1 = self.pred_mlp(z_feat_1)
+
+        # reshape (batch_size, max_box_num, out_dim)
         out_dim = z_feat_1.size(-1)
         z_feat_1 = z_feat_1.view(batch_size, -1, out_dim)
-        # z_feat_1 shape: (batch_size, max_box_num, out_dim)
+        out_dim = p_feat_1.size(-1)
+        p_feat_1 = p_feat_1.view(batch_size, -1, out_dim)
 
         # for aug_2
-        z_feat_2 = F.avg_pool2d(pooled_feat_2, pooled_feat_2.size(2))
-        z_feat_2 = z_feat_2.view(z_feat_2.size(0), -1)
-        z_feat_2 = F.relu(self.proj_1(z_feat_2))
-        z_feat_2 = self.proj_2(z_feat_2)
-        z_feat_2 = z_feat_2.view(batch_size, -1, out_dim)
+        z_feat_2 = self.projection_head(pooled_feat_2)
+        p_feat_2 = self.pred_mlp(z_feat_2)
 
-        # calculate cosine similarity
-        cos_sim = cosine_similarity_for_all_pair(z_feat_1, z_feat_2)
+        # reshape (batch_size, max_box_num, out_dim)
+        out_dim = z_feat_2.size(-1)
+        z_feat_2 = z_feat_2.view(batch_size, -1, out_dim)
+        out_dim = p_feat_2.size(-1)
+        p_feat_2 = p_feat_2.view(batch_size, -1, out_dim)
 
         # calculate iou
         iou = bbox_overlaps_batch_for_contrastive(rois_aug_1, rois_aug_2)
 
-        # calculate loss fot z_feat_1
-        loss_1, match_num_1 = self.contrastive_loss_fn(z_feat_1, z_feat_2,
-                                                       cos_sim, iou)
-        # calculate loss fot z_feat_2
-        loss_2, match_num_2 = self.contrastive_loss_fn(z_feat_2, z_feat_1,
-                                                       cos_sim.transpose(1, 2),
+        # calculate cosine similarity
+        loss_1, match_num_1 = self.contrastive_loss_fn(p_feat_1, z_feat_1,
+                                                       p_feat_2, z_feat_2, iou)
+        loss_2, match_num_2 = self.contrastive_loss_fn(p_feat_2, z_feat_2,
+                                                       p_feat_1, z_feat_1,
                                                        iou.transpose(1, 2))
 
         loss = loss_1 + loss_2
@@ -135,11 +135,6 @@ class _pretrainedNet(nn.Module):
         normal_init(self.RCNN_rpn.RPN_Conv, 0, 0.01, cfg.TRAIN.TRUNCATED)
         normal_init(self.RCNN_rpn.RPN_cls_score, 0, 0.01, cfg.TRAIN.TRUNCATED)
         normal_init(self.RCNN_rpn.RPN_bbox_pred, 0, 0.01, cfg.TRAIN.TRUNCATED)
-        # normal_init(self.RCNN_cls_score, 0, 0.01, cfg.TRAIN.TRUNCATED)
-        # normal_init(self.RCNN_bbox_pred, 0, 0.001, cfg.TRAIN.TRUNCATED)
-
-        normal_init(self.proj_1, 0, 0.01, cfg.TRAIN.TRUNCATED)
-        normal_init(self.proj_2, 0, 0.01, cfg.TRAIN.TRUNCATED)
 
     def create_architecture(self):
         self._init_modules()
