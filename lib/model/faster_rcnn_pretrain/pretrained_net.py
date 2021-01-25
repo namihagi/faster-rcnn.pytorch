@@ -46,8 +46,7 @@ class _pretrainedNet(nn.Module):
         self.RCNN_roi_align = ROIAlign((cfg.POOLING_SIZE, cfg.POOLING_SIZE),
                                        1.0 / 16.0, 0)
 
-        self.contrastive_loss_fn = ContrastiveLossForRoI(iou_threshold,
-                                                         temperature)
+        self.contrastive_loss_fn = ContrastiveLossForRoI(iou_threshold)
 
     def forward(self, im_aug_1, im_aug_2, im_info, gt_boxes, num_boxes):
         batch_size = im_aug_1.size(0)
