@@ -3,6 +3,19 @@ this code is refered to https://github.com/PatrickHua/SimSiam
 """
 
 import torch.nn as nn
+import torch.nn.functional as F
+
+
+class projection_SimCLR(nn.Module):
+    def __init__(self, in_dim, hidden_dim=2048, out_dim=2048):
+        super().__init__()
+        self.layer1 = nn.Linear(in_dim, hidden_dim)
+        self.layer2 = nn.Linear(hidden_dim, out_dim)
+
+    def forward(self, x):
+        x = F.relu(self.layer1(x))
+        x = self.layer2(x)
+        return x
 
 
 class projection_MLP(nn.Module):

@@ -7,12 +7,13 @@ from __future__ import absolute_import, division, print_function
 
 import math
 import pdb
+from numpy.core.fromnumeric import shape
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
-from model.faster_rcnn_pretrain.head import prediction_MLP, projection_MLP
+from model.faster_rcnn_pretrain.head import prediction_MLP, projection_MLP, projection_SimCLR
 from model.faster_rcnn_pretrain.pretrained_net import _pretrainedNet
 from torch.autograd import Variable
 
@@ -20,7 +21,8 @@ from torch.autograd import Variable
 class vgg16(_pretrainedNet):
     def __init__(self, classes, pretrained=False,
                  class_agnostic=False, fix_backbone=True,
-                 temperature=0.1, iou_threshold=0.7):
+                 temperature=0.1, iou_threshold=0.7,
+                 grad_stop=False, share_rpn=False):
 
         self.model_path = 'data/pretrained_model/vgg16_caffe.pth'
         self.dout_base_model = 512
@@ -29,7 +31,8 @@ class vgg16(_pretrainedNet):
         self.fix_backbone = fix_backbone
 
         _pretrainedNet.__init__(self, classes, class_agnostic,
-                                temperature, iou_threshold)
+                                temperature, iou_threshold,
+                                grad_stop, share_rpn)
 
     def _init_modules(self):
         vgg = models.vgg16()
@@ -55,28 +58,23 @@ class vgg16(_pretrainedNet):
                 for p in self.RCNN_base[layer].parameters():
                     p.requires_grad = False
 
-        # # self.RCNN_base = _RCNN_base(vgg.features, self.classes, self.dout_base_model)
-
-        # self.RCNN_top = vgg.classifier
-
-        # # not using the last maxpool layer
-        # self.RCNN_cls_score = nn.Linear(4096, self.n_classes)
-
-        # if self.class_agnostic:
-        #     self.RCNN_bbox_pred = nn.Linear(4096, 4)
-        # else:
-        #     self.RCNN_bbox_pred = nn.Linear(4096, 4 * self.n_classes)
-
         fdim = 512
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.proj_mlp = projection_MLP(in_dim=fdim,
-                                       hidden_dim=fdim,
-                                       out_dim=fdim)
-
         hidden_dim = 128
-        self.pred_mlp = prediction_MLP(in_dim=fdim,
-                                       hidden_dim=hidden_dim,
-                                       out_dim=fdim)
+
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        if self.grad_stop:
+            self.proj_mlp = projection_MLP(in_dim=fdim,
+                                           hidden_dim=fdim,
+                                           out_dim=fdim)
+
+            self.pred_mlp = prediction_MLP(in_dim=fdim,
+                                           hidden_dim=hidden_dim,
+                                           out_dim=fdim)
+
+        else:
+            self.proj_mlp = projection_SimCLR(in_dim=fdim,
+                                              hidden_dim=fdim,
+                                              out_dim=128)
 
     def projection_head(self, feat):
         feat = self.avgpool(feat)

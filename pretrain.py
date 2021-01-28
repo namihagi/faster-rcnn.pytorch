@@ -90,6 +90,12 @@ def parse_args():
                         dest='without_IN_pretrain',
                         help='whether backbone weights pretrained by ImageNet is loaded',
                         action='store_false')
+    parser.add_argument('--grad_stop', dest='grad_stop',
+                        help='whether to use gradient-stop module',
+                        action='store_true')
+    parser.add_argument('--share_rpn', dest='share_rpn',
+                        help='whether to share rpn output',
+                        action='store_true')
 
 # config region proposal network
     parser.add_argument('--rpn_top_n', dest='rpn_top_n',
@@ -289,8 +295,10 @@ if __name__ == '__main__':
         fasterRCNN = vgg16(imdb.classes,
                            pretrained=args.without_IN_pretrain,
                            class_agnostic=args.class_agnostic,
+                           fix_backbone=args.not_fix_backbone,
                            iou_threshold=args.iou_threshold,
-                           fix_backbone=args.not_fix_backbone)
+                           grad_stop=args.grad_stop,
+                           share_rpn=args.share_rpn)
     elif args.net == 'res101':
         fasterRCNN = resnet(imdb.classes, 101, pretrained=True,
                             class_agnostic=args.class_agnostic)
@@ -305,6 +313,9 @@ if __name__ == '__main__':
         pdb.set_trace()
 
     fasterRCNN.create_architecture()
+
+    # show model structure
+    print(fasterRCNN)
 
     lr = cfg.TRAIN.LEARNING_RATE
     lr = args.lr
@@ -330,6 +341,9 @@ if __name__ == '__main__':
         optimizer = optim.Adam(params)
 
     elif args.optimizer == "sgd":
+        optimizer = optim.SGD(params, momentum=cfg.TRAIN.MOMENTUM)
+
+    elif args.optimizer == "sgd_decay":
         optimizer = optim.SGD(params, momentum=cfg.TRAIN.MOMENTUM,
                               weight_decay=0.0001)
 
@@ -375,9 +389,9 @@ if __name__ == '__main__':
         match_box_hist = None
         start = time.time()
 
-        # if epoch % (args.lr_decay_step + 1) == 0:
-        #     adjust_learning_rate(optimizer, args.lr_decay_gamma)
-        #     lr *= args.lr_decay_gamma
+        if not args.grad_stop and epoch % (args.lr_decay_step + 1) == 0:
+            adjust_learning_rate(optimizer, args.lr_decay_gamma)
+            lr *= args.lr_decay_gamma
 
         data_iter = iter(dataloader)
         for step in range(iters_per_epoch):
@@ -390,9 +404,14 @@ if __name__ == '__main__':
                 num_boxes.resize_(data[4].size()).copy_(data[4])
 
             fasterRCNN.zero_grad()
-            # get rois and pooled features
-            losses = fasterRCNN(im_data_aug_1, im_data_aug_2,
+            output = fasterRCNN(im_data_aug_1, im_data_aug_2,
                                 im_info, gt_boxes, num_boxes)
+
+            if args.share_rpn:
+                losses = output
+            else:
+                losses = output[0]
+                num_of_matched_boxes = output[1]
 
             loss = losses.mean()
             loss_temp += loss.item()
@@ -401,6 +420,11 @@ if __name__ == '__main__':
                 loss_item = loss.item()
                 logger.add_scalar('loss_per_step', loss_item,
                                   global_step=global_step)
+                # add the mean of matched box num
+                if not args.share_rpn:
+                    mean_of_matched_boxes = num_of_matched_boxes.float().mean().item()
+                    logger.add_scalar('match_box_num_per_step', mean_of_matched_boxes,
+                                      global_step=global_step)
 
             # backward
             optimizer.zero_grad()
