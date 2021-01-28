@@ -7,13 +7,13 @@ from __future__ import absolute_import, division, print_function
 
 import math
 import pdb
-from numpy.core.fromnumeric import shape
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
-from model.faster_rcnn_pretrain.head import prediction_MLP, projection_MLP, projection_SimCLR
+from model.faster_rcnn_pretrain.head import (prediction_MLP, projection_MLP,
+                                             projection_SimCLR)
 from model.faster_rcnn_pretrain.pretrained_net import _pretrainedNet
 from torch.autograd import Variable
 

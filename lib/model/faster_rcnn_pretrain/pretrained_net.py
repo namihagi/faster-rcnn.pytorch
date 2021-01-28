@@ -137,7 +137,8 @@ class _pretrainedNet(nn.Module):
 
             else:
                 # calculate cosine similarity
-                cos_sim = cosine_similarity_for_all_pair(z_feat_1, z_feat_2)
+                cos_sim = cosine_similarity_for_all_pair(z_feat_1, z_feat_2,
+                                                         negative=False)
 
                 # calculate loss fot z_feat_1
                 loss_1, num_of_matched_box_1 = \

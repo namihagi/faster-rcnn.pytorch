@@ -120,7 +120,8 @@ class ContrastiveLossForRoI(nn.Module):
             # neg_feat shape: ((batch_size - 1) * 2 * matched_box_num, feature_dim)
 
             neg_sim = cosine_similarity_for_all_pair(match_feat.unsqueeze(0),
-                                                     neg_feat.unsqueeze(0))
+                                                     neg_feat.unsqueeze(0),
+                                                     negative=False)
             # neg_sim shape: (1, matched_box_num, (batch_size - 1) * 2 * matched_box_num)
 
             # scale by tempereture
