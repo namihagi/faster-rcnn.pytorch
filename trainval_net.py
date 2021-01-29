@@ -242,8 +242,9 @@ if __name__ == '__main__':
 
     sampler_batch = sampler(train_size, args.batch_size)
 
+    use_bgr = args.net in ["vgg16", "res101"]
     dataset = roibatchLoader(roidb, ratio_list, ratio_index, args.batch_size,
-                             imdb.num_classes, training=True)
+                             imdb.num_classes, training=True, use_bgr=use_bgr)
 
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size,
                                              sampler=sampler_batch, num_workers=args.num_workers)
@@ -282,9 +283,11 @@ if __name__ == '__main__':
                             class_agnostic=args.class_agnostic)
     elif args.net == 'res50':
         fasterRCNN = resnet(imdb.classes, 50, pretrained=True,
+                            use_caffe=False,
                             class_agnostic=args.class_agnostic)
     elif args.net == 'res152':
         fasterRCNN = resnet(imdb.classes, 152, pretrained=True,
+                            use_caffe=False,
                             class_agnostic=args.class_agnostic)
     else:
         print("network is not defined")

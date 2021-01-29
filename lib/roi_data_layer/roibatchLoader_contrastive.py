@@ -23,15 +23,18 @@ from torchvision import transforms
 from roi_data_layer.minibatch_for_PIL import get_minibatch
 
 
-def scale_to_255_and_bgr(tensor):
-    tensor = tensor * 255
+def scale_to_255(tensor):
+    return tensor * 255
+
+
+def rgb_to_bgr(tensor):
     return tensor[(2, 1, 0), :, :]
 
 
 class roibatchLoader(data.Dataset):
     def __init__(self, roidb, ratio_list, ratio_index, batch_size,
                  num_classes, training=True, normalize=None,
-                 flip=False, is_augmented=False):
+                 flip=False, is_augmented=False, use_bgr=False):
         self._roidb = roidb
         self._num_classes = num_classes
         # we make the height of image consistent to trim_height, trim_width
@@ -47,6 +50,7 @@ class roibatchLoader(data.Dataset):
 
         self.flip = flip
         self.is_augmented = is_augmented
+        self.use_bgr = use_bgr
         if self.is_augmented:
             self.augment = DataAugmentation()
         else:
@@ -54,9 +58,11 @@ class roibatchLoader(data.Dataset):
                 transforms.ToTensor(),
             ])
 
+        # HWC -> CHW
         self.pixel_means = torch.tensor(cfg.PIXEL_MEANS).permute(2, 0, 1)
-        # bgr -> rgb
-        self.pixel_means = self.pixel_means[(2, 1, 0), :, :]
+        if not self.use_bgr:
+            # bgr -> rgb
+            self.pixel_means = self.pixel_means[(2, 1, 0), :, :]
 
         # given the ratio_list, we want to make the ratio same for each batch.
         self.ratio_list_batch = torch.Tensor(self.data_size).zero_()
@@ -96,14 +102,16 @@ class roibatchLoader(data.Dataset):
             data_pil = ImageOps.mirror(data_pil)
 
         # augment
+        data = self.augment(data_pil)
+        data = scale_to_255(data)
+        if self.use_bgr:
+            data = rgb_to_bgr(data)
+
         if self.is_augmented:
-            data = self.augment(data_pil)
-            data = scale_to_255_and_bgr(data)
             data_clone = self.augment(data_pil)
-            data_clone = scale_to_255_and_bgr(data_clone)
-        else:
-            data = self.augment(data_pil)
-            data = scale_to_255_and_bgr(data)
+            data_clone = scale_to_255(data_clone)
+            if self.use_bgr:
+                data_clone = rgb_to_bgr(data_clone)
 
         # data shabe
         im_info = torch.from_numpy(blobs['im_info'])
@@ -271,12 +279,8 @@ class roibatchLoader(data.Dataset):
                 num_boxes = 0
 
             padding_data -= self.pixel_means
-            # rgb -> bgr
-            padding_data = padding_data[(2, 1, 0), :, :]
             if self.is_augmented:
                 padding_data_clone -= self.pixel_means
-                # rgb -> bgr
-                padding_data_clone = padding_data_clone[(2, 1, 0), :, :]
 
             im_info = im_info.view(3)
 
@@ -290,8 +294,6 @@ class roibatchLoader(data.Dataset):
         else:
             data = data.contiguous().view(3, data_height, data_width)
             data -= self.pixel_means
-            # rgb -> bgr
-            data = data[(2, 1, 0), :, :]
             im_info = im_info.view(3)
 
             gt_boxes = torch.FloatTensor([1, 1, 1, 1, 1])
