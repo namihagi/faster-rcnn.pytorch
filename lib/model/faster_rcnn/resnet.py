@@ -237,6 +237,7 @@ class resnet(_fasterRCNN):
 
     def _init_modules(self):
         resnet = model_details[self.num_layers]["fn"]
+        resnet = resnet(pretrained=False)
 
         if self.pretrained is True:
             print("Loading pretrained weights from %s" % (self.model_path))
