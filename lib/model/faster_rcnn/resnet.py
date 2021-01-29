@@ -23,14 +23,6 @@ model_urls = {
     'resnet152': 'https://s3.amazonaws.com/pytorch/models/resnet152-b121ed2d.pth',
 }
 
-model_instance {
-    18: resnet18,
-    34: resnet34,
-    50: resnet50,
-    101: resnet101,
-    152: resnet152,
-}
-
 
 def conv3x3(in_planes, out_planes, stride=1):
     "3x3 convolution with padding"
@@ -225,6 +217,15 @@ def resnet152(pretrained=False):
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls['resnet152']))
     return model
+
+
+model_instance = {
+    18: resnet18,
+    34: resnet34,
+    50: resnet50,
+    101: resnet101,
+    152: resnet152,
+}
 
 
 class resnet(_fasterRCNN):
