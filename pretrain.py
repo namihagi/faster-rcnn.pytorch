@@ -15,7 +15,7 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
-from model.faster_rcnn.resnet import resnet
+from model.faster_rcnn_pretrain.resnet import resnet
 from model.faster_rcnn_pretrain.vgg16 import vgg16
 from model.utils.config import cfg, cfg_from_file, cfg_from_list
 from model.utils.net_utils import (adjust_learning_rate, clip_gradient,
@@ -300,8 +300,13 @@ if __name__ == '__main__':
                            grad_stop=args.grad_stop,
                            share_rpn=args.share_rpn)
     elif args.net == 'res101':
-        fasterRCNN = resnet(imdb.classes, 101, pretrained=True,
-                            class_agnostic=args.class_agnostic)
+        fasterRCNN = resnet(imdb.classes, 101,
+                            pretrained=args.without_IN_pretrain,
+                            class_agnostic=args.class_agnostic,
+                            fix_backbone=args.not_fix_backbone,
+                            iou_threshold=args.iou_threshold,
+                            grad_stop=args.grad_stop,
+                            share_rpn=args.share_rpn)
     elif args.net == 'res50':
         fasterRCNN = resnet(imdb.classes, 50, pretrained=True,
                             class_agnostic=args.class_agnostic)

@@ -1,3 +1,4 @@
+import sys
 import torch
 import torch.nn as nn
 from contrastive import ContrastiveLossForRoI, cosine_similarity_for_all_pair
@@ -85,14 +86,19 @@ class _pretrainedNet(nn.Module):
             pooled_feat_2 = self.RCNN_roi_pool(base_feat_aug_2,
                                                rois_aug_2.view(-1, 5))
 
+        # feed pooled features to top model
+        # pooled feat shape: [batch_size * RPN_POST_NMS_TOP_N, out_dim]
+        pooled_feat_1 = self._head_to_tail(pooled_feat_1)
+        pooled_feat_2 = self._head_to_tail(pooled_feat_2)
+
         # projection head for contrastive learning
         # for aug_1
-        z_feat_1 = self.projection_head(pooled_feat_1)
+        z_feat_1 = self.proj_mlp(pooled_feat_1)
         if self.grad_stop:
             p_feat_1 = self.pred_mlp(z_feat_1)
 
         # for aug_2
-        z_feat_2 = self.projection_head(pooled_feat_2)
+        z_feat_2 = self.proj_mlp(pooled_feat_2)
         if self.grad_stop:
             p_feat_2 = self.pred_mlp(z_feat_2)
 
@@ -171,12 +177,6 @@ class _pretrainedNet(nn.Module):
         normal_init(self.RCNN_rpn.RPN_Conv, 0, 0.01, cfg.TRAIN.TRUNCATED)
         normal_init(self.RCNN_rpn.RPN_cls_score, 0, 0.01, cfg.TRAIN.TRUNCATED)
         normal_init(self.RCNN_rpn.RPN_bbox_pred, 0, 0.01, cfg.TRAIN.TRUNCATED)
-
-        if not self.grad_stop:
-            normal_init(self.proj_mlp.layer1,
-                        0, 0.01, cfg.TRAIN.TRUNCATED)
-            normal_init(self.proj_mlp.layer2,
-                        0, 0.01, cfg.TRAIN.TRUNCATED)
 
     def create_architecture(self):
         self._init_modules()
