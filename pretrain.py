@@ -257,8 +257,9 @@ if __name__ == '__main__':
 
     sampler_batch = sampler(train_size, args.batch_size)
 
+    use_bgr = args.net in ["vgg16", "res101"]
     dataset = roibatchLoader(roidb, ratio_list, ratio_index, args.batch_size,
-                             imdb.num_classes, training=True,
+                             imdb.num_classes, training=True, use_bgr=use_bgr,
                              flip=True, is_augmented=True)
 
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size,
