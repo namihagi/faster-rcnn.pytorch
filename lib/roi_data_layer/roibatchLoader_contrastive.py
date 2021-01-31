@@ -58,11 +58,16 @@ class roibatchLoader(data.Dataset):
                 transforms.ToTensor(),
             ])
 
-        # HWC -> CHW
-        self.pixel_means = torch.tensor(cfg.PIXEL_MEANS).permute(2, 0, 1)
-        if not self.use_bgr:
-            # bgr -> rgb
-            self.pixel_means = self.pixel_means[(2, 1, 0), :, :]
+        if self.use_bgr:
+            # HWC -> CHW
+            # BGR
+            self.pixel_means = torch.tensor(cfg.PIXEL_MEANS).permute(2, 0, 1)
+        else:
+            # RGB
+            self.pixel_means = torch.tensor([0.485, 0.456, 0.406])
+            self.pixel_means = self.pixel_means.reshape(3, 1, 1)
+            self.pixel_std = torch.tensor([0.229, 0.224, 0.225])
+            self.pixel_std = self.pixel_std.reshape(3, 1, 1)
 
         # given the ratio_list, we want to make the ratio same for each batch.
         self.ratio_list_batch = torch.Tensor(self.data_size).zero_()
@@ -103,14 +108,14 @@ class roibatchLoader(data.Dataset):
 
         # augment
         data = self.augment(data_pil)
-        data = scale_to_255(data)
         if self.use_bgr:
+            data = scale_to_255(data)
             data = rgb_to_bgr(data)
 
         if self.is_augmented:
             data_clone = self.augment(data_pil)
-            data_clone = scale_to_255(data_clone)
             if self.use_bgr:
+                data_clone = scale_to_255(data_clone)
                 data_clone = rgb_to_bgr(data_clone)
 
         # data shabe
@@ -279,8 +284,13 @@ class roibatchLoader(data.Dataset):
                 num_boxes = 0
 
             padding_data -= self.pixel_means
+            if not self.use_bgr:
+                padding_data /= self.pixel_std
+
             if self.is_augmented:
                 padding_data_clone -= self.pixel_means
+                if not self.use_bgr:
+                    padding_data /= self.pixel_std
 
             im_info = im_info.view(3)
 
@@ -294,6 +304,8 @@ class roibatchLoader(data.Dataset):
         else:
             data = data.contiguous().view(3, data_height, data_width)
             data -= self.pixel_means
+            if not self.use_bgr:
+                data /= self.pixel_std
             im_info = im_info.view(3)
 
             gt_boxes = torch.FloatTensor([1, 1, 1, 1, 1])
