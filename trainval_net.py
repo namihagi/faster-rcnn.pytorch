@@ -88,6 +88,9 @@ def parse_args():
                         dest='without_IM_pretrain',
                         help='whether backbone weights pretrained by ImageNet is loaded',
                         action='store_false')
+    parser.add_argument('--use_caffe', dest='use_caffe',
+                        help='which pretrained model do you use, pytorch or caffe',
+                        action='store_true')
 
 # config optimization
     parser.add_argument('--o', dest='optimizer',
@@ -242,7 +245,7 @@ if __name__ == '__main__':
 
     sampler_batch = sampler(train_size, args.batch_size)
 
-    use_bgr = args.net in ["vgg16", "res101"]
+    use_bgr = args.net in ["vgg16", "res101"] or args.use_caffe
     dataset = roibatchLoader(roidb, ratio_list, ratio_index, args.batch_size,
                              imdb.num_classes, training=True, use_bgr=use_bgr)
 
@@ -283,11 +286,11 @@ if __name__ == '__main__':
                             class_agnostic=args.class_agnostic)
     elif args.net == 'res50':
         fasterRCNN = resnet(imdb.classes, 50, pretrained=True,
-                            use_caffe=False,
+                            use_caffe=args.use_caffe,
                             class_agnostic=args.class_agnostic)
     elif args.net == 'res152':
         fasterRCNN = resnet(imdb.classes, 152, pretrained=True,
-                            use_caffe=False,
+                            use_caffe=args.use_caffe,
                             class_agnostic=args.class_agnostic)
     else:
         print("network is not defined")

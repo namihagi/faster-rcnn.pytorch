@@ -92,6 +92,9 @@ def parse_args():
     parser.add_argument('--vis', dest='vis',
                         help='visualization mode',
                         action='store_true')
+    parser.add_argument('--use_caffe', dest='use_caffe',
+                        help='which pretrained model do you use, pytorch or caffe',
+                        action='store_true')
     args = parser.parse_args()
     return args
 
@@ -239,7 +242,7 @@ if __name__ == '__main__':
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    use_bgr = args.net in ["vgg16", "res101"]
+    use_bgr = args.net in ["vgg16", "res101"] or args.use_caffe
     dataset = roibatchLoader(roidb, ratio_list, ratio_index, 1, imdb.num_classes,
                              training=False, normalize=False, use_bgr=use_bgr)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1,
