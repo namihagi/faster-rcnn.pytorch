@@ -221,25 +221,35 @@ def resnet152(pretrained=False):
     return model
 
 
+model_instance = {
+    50: [resnet50, "data/pretrained_model/resnet50_caffe.pth"],
+    101: [resnet101, "data/pretrained_model/resnet101_caffe.pth"],
+}
+
+
 class resnet(_pretrainedNet):
     def __init__(self, classes, num_layers=101,
                  pretrained=False, class_agnostic=False,
                  fix_backbone=True, temperature=0.1,
-                 iou_threshold=0.7, grad_stop=False, share_rpn=False):
-        self.model_path = 'data/pretrained_model/resnet101_caffe.pth'
+                 iou_threshold=0.7, grad_stop=False,
+                 share_rpn=False, random_rpn=False,
+                 use_caffe=True):
+        self.model_path = model_instance[num_layers][1]
         self.dout_base_model = 1024
         self.pretrained = pretrained
         self.class_agnostic = class_agnostic
         self.fix_backbone = fix_backbone
+        self.use_caffe = use_caffe
+        self.num_layers = num_layers
 
         _pretrainedNet.__init__(self, classes, class_agnostic,
                                 temperature, iou_threshold,
-                                grad_stop, share_rpn)
+                                grad_stop, share_rpn, random_rpn)
 
     def _init_modules(self):
-        resnet = resnet101()
+        resnet = model_instance[self.num_layers][0](pretrained=self.pretrained)
 
-        if self.pretrained is True:
+        if self.use_caffe and self.pretrained is True:
             print("Loading pretrained weights from %s" % (self.model_path))
             state_dict = torch.load(self.model_path)
             resnet.load_state_dict(
@@ -282,7 +292,6 @@ class resnet(_pretrainedNet):
         fdim = 2048
         hidden_dim = 512
 
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         if self.grad_stop:
             self.proj_mlp = projection_MLP(in_dim=fdim,
                                            hidden_dim=fdim,

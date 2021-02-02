@@ -96,6 +96,9 @@ def parse_args():
     parser.add_argument('--share_rpn', dest='share_rpn',
                         help='whether to share rpn output',
                         action='store_true')
+    parser.add_argument('--random_rpn', dest='random_rpn',
+                        help='whether to use random roi instead of RPN',
+                        action='store_true')
 
 # config region proposal network
     parser.add_argument('--rpn_top_n', dest='rpn_top_n',
@@ -143,6 +146,15 @@ def parse_args():
                         action='store_true')
 
     args = parser.parse_args()
+
+    # dependency
+    if args.random_rpn:
+        args.share_rpn = True
+    if args.share_rpn:
+        args.grad_stop = True
+        args.scheduler = True
+        args.optimizer = "sgd_decay"
+
     return args
 
 
@@ -299,7 +311,8 @@ if __name__ == '__main__':
                            fix_backbone=args.not_fix_backbone,
                            iou_threshold=args.iou_threshold,
                            grad_stop=args.grad_stop,
-                           share_rpn=args.share_rpn)
+                           share_rpn=args.share_rpn,
+                           random_rpn=args.random_rpn)
     elif args.net == 'res101':
         fasterRCNN = resnet(imdb.classes, 101,
                             pretrained=args.without_IN_pretrain,
@@ -309,10 +322,16 @@ if __name__ == '__main__':
                             grad_stop=args.grad_stop,
                             share_rpn=args.share_rpn)
     elif args.net == 'res50':
-        fasterRCNN = resnet(imdb.classes, 50, pretrained=True,
-                            class_agnostic=args.class_agnostic)
+        fasterRCNN = resnet(imdb.classes, 50,
+                            pretrained=args.without_IN_pretrain,
+                            class_agnostic=args.class_agnostic,
+                            fix_backbone=args.not_fix_backbone,
+                            iou_threshold=args.iou_threshold,
+                            grad_stop=args.grad_stop,
+                            share_rpn=args.share_rpn)
     elif args.net == 'res152':
         fasterRCNN = resnet(imdb.classes, 152, pretrained=True,
+                            use_caffe=False,
                             class_agnostic=args.class_agnostic)
     else:
         print("network is not defined")

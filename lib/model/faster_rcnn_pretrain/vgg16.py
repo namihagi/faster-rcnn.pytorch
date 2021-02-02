@@ -22,7 +22,7 @@ class vgg16(_pretrainedNet):
     def __init__(self, classes, pretrained=False,
                  class_agnostic=False, fix_backbone=True,
                  temperature=0.1, iou_threshold=0.7,
-                 grad_stop=False, share_rpn=False):
+                 grad_stop=False, share_rpn=False, random_rpn=False):
 
         self.model_path = 'data/pretrained_model/vgg16_caffe.pth'
         self.dout_base_model = 512
@@ -32,7 +32,7 @@ class vgg16(_pretrainedNet):
 
         _pretrainedNet.__init__(self, classes, class_agnostic,
                                 temperature, iou_threshold,
-                                grad_stop, share_rpn)
+                                grad_stop, share_rpn, random_rpn)
 
     def _init_modules(self):
         vgg = models.vgg16()
@@ -58,10 +58,11 @@ class vgg16(_pretrainedNet):
                 for p in self.RCNN_base[layer].parameters():
                     p.requires_grad = False
 
-        fdim = 512
-        hidden_dim = 128
+        self.RCNN_top = vgg.classifier
 
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        fdim = 4096
+        hidden_dim = 1024
+
         if self.grad_stop:
             self.proj_mlp = projection_MLP(in_dim=fdim,
                                            hidden_dim=fdim,
@@ -81,3 +82,8 @@ class vgg16(_pretrainedNet):
         feat = torch.flatten(feat, 1)
         feat = self.proj_mlp(feat)
         return feat
+
+    def _head_to_tail(self, pool5):
+        pool5_flat = pool5.view(pool5.size(0), -1)
+        fc7 = self.RCNN_top(pool5_flat)
+        return fc7

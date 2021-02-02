@@ -1,4 +1,5 @@
 import sys
+
 import torch
 import torch.nn as nn
 from contrastive import ContrastiveLossForRoI, cosine_similarity_for_all_pair
@@ -7,6 +8,7 @@ from contrastive.loss import ContrastiveLossForRoIWithGradStop
 from model.roi_layers import ROIAlign, ROIPool
 from model.rpn.bbox_transform import bbox_overlaps_batch_for_contrastive
 from model.rpn.proposal_target_layer_cascade import _ProposalTargetLayer
+from model.rpn.random_rpn import RandomRoi
 from model.rpn.rpn import _RPN
 from model.utils.config import cfg
 from torch.autograd import Variable
@@ -17,7 +19,8 @@ class _pretrainedNet(nn.Module):
 
     def __init__(self, classes, class_agnostic,
                  temperature=0.1, iou_threshold=0.7,
-                 grad_stop=False, share_rpn=False):
+                 grad_stop=False, share_rpn=False,
+                 random_rpn=False):
         super(_pretrainedNet, self).__init__()
         self.classes = classes
         self.n_classes = len(classes)
@@ -25,6 +28,7 @@ class _pretrainedNet(nn.Module):
         self.iou_threth = iou_threshold
         self.grad_stop = grad_stop
         self.share_rpn = share_rpn
+        self.random_rpn = random_rpn
 
         # loss
         self.RCNN_loss_cls = 0
@@ -33,6 +37,7 @@ class _pretrainedNet(nn.Module):
         # define rpn
         self.RCNN_rpn = _RPN(self.dout_base_model, use_rpn_train=False)
         self.RCNN_proposal_target = _ProposalTargetLayer(self.n_classes)
+        self.RandRoI = RandomRoi()
 
         self.RCNN_roi_pool = ROIPool((cfg.POOLING_SIZE, cfg.POOLING_SIZE),
                                      1.0 / 16.0)
@@ -61,14 +66,17 @@ class _pretrainedNet(nn.Module):
 
         # feed base feature map tp RPN to obtain rois
         # roi shape: [batch_size, RPN_POST_NMS_TOP_N, 5]
-        rois_aug_1, _, _ = self.RCNN_rpn(base_feat_aug_1, im_info,
-                                         gt_boxes, num_boxes)
-        if not self.share_rpn:
-            rois_aug_2, _, _ = self.RCNN_rpn(base_feat_aug_2, im_info,
+        if self.random_rpn:
+            rois_aug_1 = self.RandRoI(batch_size, im_info)
+        else:
+            rois_aug_1, _, _ = self.RCNN_rpn(base_feat_aug_1, im_info,
                                              gt_boxes, num_boxes)
+            if not self.share_rpn:
+                rois_aug_2, _, _ = self.RCNN_rpn(base_feat_aug_2, im_info,
+                                                 gt_boxes, num_boxes)
 
         rois_aug_1 = Variable(rois_aug_1)
-        if self.share_rpn:
+        if self.share_rpn or self.random_rpn:
             rois_aug_2 = rois_aug_1
         else:
             rois_aug_2 = Variable(rois_aug_2)
@@ -104,7 +112,6 @@ class _pretrainedNet(nn.Module):
 
         # calculate cosine similarity
         if self.share_rpn:
-            assert self.grad_stop is True
             loss_1 = cosine_similarity_for_grad_stop(p_feat_1,
                                                      z_feat_2)
             loss_2 = cosine_similarity_for_grad_stop(p_feat_2,
