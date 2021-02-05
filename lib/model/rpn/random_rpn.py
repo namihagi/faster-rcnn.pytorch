@@ -97,7 +97,7 @@ class RandomRoi(nn.Module):
             output_boxes[s_idx:e_idx, 1:] = selected_boxes.view(-1, 4)
             s_idx = e_idx
 
-        return output_boxes
+        return output_boxes, num_of_final_box
 
 
 if __name__ == "__main__":

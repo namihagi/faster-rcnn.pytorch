@@ -11,6 +11,7 @@ import pdb
 import pprint
 import sys
 import time
+import contrastive
 
 import numpy as np
 import torch
@@ -434,7 +435,10 @@ if __name__ == '__main__':
             output = fasterRCNN(im_data_aug_1, im_data_aug_2,
                                 im_info, gt_boxes, num_boxes)
 
-            if args.share_rpn:
+            if args.random_rpn:
+                contrastive_loss, rpn_loss_cls, rpn_loss_bbox = output
+                losses = contrastive_loss.mean() + rpn_loss_bbox.mean() + rpn_loss_cls.mean()
+            elif args.share_rpn:
                 losses = output
             else:
                 losses = output[0]
@@ -448,6 +452,16 @@ if __name__ == '__main__':
                 logger.add_scalar('loss_per_step', loss_item,
                                   global_step=global_step)
                 # add the mean of matched box num
+                if args.random_rpn:
+                    contrastive_loss = contrastive_loss.mean().item()
+                    rpn_loss_cls = rpn_loss_cls.mean().item()
+                    rpn_loss_bbox = rpn_loss_bbox.mean().item()
+                    logger.add_scalar('contrastive_loss', contrastive_loss,
+                                      global_step=global_step)
+                    logger.add_scalar('rpn_loss_cls', rpn_loss_cls,
+                                      global_step=global_step)
+                    logger.add_scalar('rpn_loss_bbox', rpn_loss_bbox,
+                                      global_step=global_step)
                 if not args.share_rpn:
                     mean_of_matched_boxes = num_of_matched_boxes.float().mean().item()
                     logger.add_scalar('match_box_num_per_step', mean_of_matched_boxes,

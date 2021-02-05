@@ -35,7 +35,7 @@ class _pretrainedNet(nn.Module):
         self.RCNN_loss_bbox = 0
 
         # define rpn
-        self.RCNN_rpn = _RPN(self.dout_base_model, use_rpn_train=False)
+        self.RCNN_rpn = _RPN(self.dout_base_model, use_rpn_train=self.random_rpn)
         self.RCNN_proposal_target = _ProposalTargetLayer(self.n_classes)
         self.RandRoI = RandomRoi()
 
@@ -67,7 +67,17 @@ class _pretrainedNet(nn.Module):
         # feed base feature map tp RPN to obtain rois
         # roi shape: [batch_size, RPN_POST_NMS_TOP_N, 5]
         if self.random_rpn:
-            rois_aug_1 = self.RandRoI(batch_size, im_info)
+            rois_aug_1, list_of_box_num = self.RandRoI(batch_size, im_info)
+            psuedo_boxes = torch.zeros_like(gt_boxes)
+            s_idx = 0
+            for i in range(batch_size):
+                num_psuedo = list_of_box_num[i]
+                psuedo_boxes[i, :num_psuedo, 4] = 1
+                e_idx = list_of_box_num[i] + s_idx
+                psuedo_boxes[i, :num_psuedo, :4] = \
+                    rois_aug_1[s_idx:e_idx, 1:]
+            _, rpn_loss_cls, rpn_loss_bbox = self.RCNN_rpn(base_feat_aug_1, im_info,
+                                                           psuedo_boxes, list_of_box_num)
         else:
             rois_aug_1, _, _ = self.RCNN_rpn(base_feat_aug_1, im_info,
                                              gt_boxes, num_boxes)
@@ -118,7 +128,10 @@ class _pretrainedNet(nn.Module):
                                                      z_feat_1)
 
             loss = loss_1 / 2 + loss_2 / 2
-            return loss
+            if self.random_rpn:
+                return loss, rpn_loss_cls, rpn_loss_bbox
+            else:
+                return loss
 
         else:
             # calculate iou
