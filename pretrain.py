@@ -269,7 +269,7 @@ if __name__ == '__main__':
 
     sampler_batch = sampler(train_size, args.batch_size)
 
-    use_bgr = args.net in ["vgg16", "res101"]
+    use_bgr = args.net in ["vgg16", "res50", "res101"]
     dataset = roibatchLoader(roidb, ratio_list, ratio_index, args.batch_size,
                              imdb.num_classes, training=True, use_bgr=use_bgr,
                              flip=True, is_augmented=True)
@@ -320,7 +320,8 @@ if __name__ == '__main__':
                             fix_backbone=args.not_fix_backbone,
                             iou_threshold=args.iou_threshold,
                             grad_stop=args.grad_stop,
-                            share_rpn=args.share_rpn)
+                            share_rpn=args.share_rpn,
+                            random_rpn=args.random_rpn)
     elif args.net == 'res50':
         fasterRCNN = resnet(imdb.classes, 50,
                             pretrained=args.without_IN_pretrain,
@@ -328,7 +329,8 @@ if __name__ == '__main__':
                             fix_backbone=args.not_fix_backbone,
                             iou_threshold=args.iou_threshold,
                             grad_stop=args.grad_stop,
-                            share_rpn=args.share_rpn)
+                            share_rpn=args.share_rpn,
+                            random_rpn=args.random_rpn)
     elif args.net == 'res152':
         fasterRCNN = resnet(imdb.classes, 152, pretrained=True,
                             use_caffe=False,

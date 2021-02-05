@@ -242,7 +242,7 @@ if __name__ == '__main__':
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    use_bgr = args.net in ["vgg16", "res101"] or args.use_caffe
+    use_bgr = args.net in ["vgg16", "res50", "res101"]
     dataset = roibatchLoader(roidb, ratio_list, ratio_index, 1, imdb.num_classes,
                              training=False, normalize=False, use_bgr=use_bgr)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1,
