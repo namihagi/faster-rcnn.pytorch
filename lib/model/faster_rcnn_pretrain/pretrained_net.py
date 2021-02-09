@@ -35,7 +35,8 @@ class _pretrainedNet(nn.Module):
         self.RCNN_loss_bbox = 0
 
         # define rpn
-        self.RCNN_rpn = _RPN(self.dout_base_model, use_rpn_train=self.random_rpn)
+        self.RCNN_rpn = _RPN(self.dout_base_model,
+                             use_rpn_train=self.random_rpn)
         self.RCNN_proposal_target = _ProposalTargetLayer(self.n_classes)
         self.RandRoI = RandomRoi()
 
@@ -72,10 +73,14 @@ class _pretrainedNet(nn.Module):
             s_idx = 0
             for i in range(batch_size):
                 num_psuedo = list_of_box_num[i]
-                psuedo_boxes[i, :num_psuedo, 4] = 1
                 e_idx = list_of_box_num[i] + s_idx
+
+                psuedo_boxes[i, :num_psuedo, 4] = 1
                 psuedo_boxes[i, :num_psuedo, :4] = \
                     rois_aug_1[s_idx:e_idx, 1:]
+
+                s_idx = e_idx
+
             _, rpn_loss_cls, rpn_loss_bbox = self.RCNN_rpn(base_feat_aug_1, im_info,
                                                            psuedo_boxes, list_of_box_num)
         else:
