@@ -62,7 +62,8 @@ class _pretrainedNet(nn.Module):
         batch_size = im_aug_1.size(0)
 
         # horizontal flip for im_aug_2
-        im_aug_2 = im_aug_2.flip(dims=(-1,))
+        if self.flip_cons:
+            im_aug_2 = im_aug_2.flip(dims=(-1,))
 
         # feed image data to base model to obtain base feature map
         # base_feat shape: [batch_size, dim, h, w]
