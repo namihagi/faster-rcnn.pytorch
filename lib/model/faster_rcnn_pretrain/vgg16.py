@@ -22,7 +22,8 @@ class vgg16(_pretrainedNet):
     def __init__(self, classes, pretrained=False,
                  class_agnostic=False, fix_backbone=True,
                  temperature=0.1, iou_threshold=0.7,
-                 grad_stop=False, share_rpn=False, random_rpn=False):
+                 grad_stop=False, share_rpn=False,
+                 random_rpn=False, flip_cons=False):
 
         self.model_path = 'data/pretrained_model/vgg16_caffe.pth'
         self.dout_base_model = 512
@@ -32,7 +33,8 @@ class vgg16(_pretrainedNet):
 
         _pretrainedNet.__init__(self, classes, class_agnostic,
                                 temperature, iou_threshold,
-                                grad_stop, share_rpn, random_rpn)
+                                grad_stop, share_rpn,
+                                random_rpn, flip_cons)
 
     def _init_modules(self):
         vgg = models.vgg16()

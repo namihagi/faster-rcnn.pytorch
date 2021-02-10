@@ -24,6 +24,7 @@ from model.utils.net_utils import (adjust_learning_rate, clip_gradient,
 from roi_data_layer.roibatchLoader_contrastive import roibatchLoader
 from roi_data_layer.roidb import combined_roidb
 from torch import optim
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.autograd import Variable
 from torch.utils.data.sampler import Sampler
 
@@ -100,6 +101,9 @@ def parse_args():
     parser.add_argument('--random_rpn', dest='random_rpn',
                         help='whether to use random roi instead of RPN',
                         action='store_true')
+    parser.add_argument('--flip_cons', dest='flip_cons',
+                        help='whether to use flip consistency',
+                        action='store_true')
 
 # config region proposal network
     parser.add_argument('--rpn_top_n', dest='rpn_top_n',
@@ -149,12 +153,18 @@ def parse_args():
     args = parser.parse_args()
 
     # dependency
+    if args.flip_cons:
+        args.random_rpn = True
+        print(" *** : use flip consistency")
     if args.random_rpn:
         args.share_rpn = True
+        print(" *** : use share_rpn")
     if args.share_rpn:
         args.grad_stop = True
         args.scheduler = True
         args.optimizer = "sgd_decay"
+        print(" *** : use gradient-stop")
+        print(" *** : use scheduler")
 
     return args
 
@@ -313,7 +323,8 @@ if __name__ == '__main__':
                            iou_threshold=args.iou_threshold,
                            grad_stop=args.grad_stop,
                            share_rpn=args.share_rpn,
-                           random_rpn=args.random_rpn)
+                           random_rpn=args.random_rpn,
+                           flip_cons=args.flip_cons)
     elif args.net == 'res101':
         fasterRCNN = resnet(imdb.classes, 101,
                             pretrained=args.without_IN_pretrain,
@@ -322,7 +333,8 @@ if __name__ == '__main__':
                             iou_threshold=args.iou_threshold,
                             grad_stop=args.grad_stop,
                             share_rpn=args.share_rpn,
-                            random_rpn=args.random_rpn)
+                            random_rpn=args.random_rpn,
+                            flip_cons=args.flip_cons)
     elif args.net == 'res50':
         fasterRCNN = resnet(imdb.classes, 50,
                             pretrained=args.without_IN_pretrain,
@@ -331,7 +343,8 @@ if __name__ == '__main__':
                             iou_threshold=args.iou_threshold,
                             grad_stop=args.grad_stop,
                             share_rpn=args.share_rpn,
-                            random_rpn=args.random_rpn)
+                            random_rpn=args.random_rpn,
+                            flip_cons=args.flip_cons)
     elif args.net == 'res152':
         fasterRCNN = resnet(imdb.classes, 152, pretrained=True,
                             use_caffe=False,
@@ -380,20 +393,25 @@ if __name__ == '__main__':
 
     # scheduler
     if args.scheduler:
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer,
-                                                         T_max=iters_per_epoch,
-                                                         eta_min=0,
-                                                         last_epoch=-1)
+        T_max = iters_per_epoch * args.max_epochs
+        scheduler = CosineAnnealingLR(optimizer,
+                                      T_max=T_max,
+                                      eta_min=0,
+                                      last_epoch=-1)
 
     if args.resume:
+        pth_file_name = 'faster_rcnn_{}_{}_{}.pth'.format(
+            args.checksession, args.checkepoch, args.checkpoint)
         load_name = os.path.join(output_dir,
-                                 'faster_rcnn_{}_{}_{}.pth'.format(args.checksession, args.checkepoch, args.checkpoint))
+                                 pth_file_name)
         print("loading checkpoint %s" % (load_name))
         checkpoint = torch.load(load_name)
         args.session = checkpoint['session']
         args.start_epoch = checkpoint['epoch']
         fasterRCNN.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
+        if args.scheduler:
+            scheduler.load_state_dict(checkpoint['scheduler'])
         lr = optimizer.param_groups[0]['lr']
         if 'pooling_mode' in checkpoint.keys():
             cfg.POOLING_MODE = checkpoint['pooling_mode']
@@ -473,6 +491,12 @@ if __name__ == '__main__':
             if args.net == "vgg16":
                 clip_gradient(fasterRCNN, 10.)
             optimizer.step()
+            if args.scheduler:
+                lr = optimizer.param_groups[0]["lr"]
+                scheduler.step()
+                if args.use_tfboard:
+                    logger.add_scalar('learning rate', lr,
+                                      global_step=global_step)
             global_step += 1
 
             if step % args.disp_interval == 0:
@@ -488,19 +512,19 @@ if __name__ == '__main__':
                 loss_temp = 0
                 start = time.time()
 
-        if args.scheduler:
-            scheduler.step()
-
         save_name = os.path.join(output_dir,
                                  'faster_rcnn_{}_{}_{}.pth'.format(args.session, epoch, step))
-        save_checkpoint({
+        save_dict = {
             'session': args.session,
             'epoch': epoch + 1,
             'model': fasterRCNN.module.state_dict() if args.mGPUs else fasterRCNN.state_dict(),
             'optimizer': optimizer.state_dict(),
             'pooling_mode': cfg.POOLING_MODE,
             'class_agnostic': args.class_agnostic,
-        }, save_name)
+        }
+        if args.scheduler:
+            save_dict["scheduler"] = scheduler.state_dict()
+        save_checkpoint(save_dict, save_name)
         print('save model: {}'.format(save_name))
 
     if args.use_tfboard:
