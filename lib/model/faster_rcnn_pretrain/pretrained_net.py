@@ -20,7 +20,8 @@ class _pretrainedNet(nn.Module):
     def __init__(self, classes, class_agnostic,
                  temperature=0.1, iou_threshold=0.7,
                  grad_stop=False, share_rpn=False,
-                 random_rpn=False, flip_cons=False):
+                 random_rpn=False, flip_cons=False,
+                 both_update=False):
         super(_pretrainedNet, self).__init__()
         self.classes = classes
         self.n_classes = len(classes)
@@ -30,6 +31,7 @@ class _pretrainedNet(nn.Module):
         self.share_rpn = share_rpn
         self.random_rpn = random_rpn
         self.flip_cons = flip_cons
+        self.both_update = both_update
 
         # loss
         self.RCNN_loss_cls = 0
@@ -106,12 +108,15 @@ class _pretrainedNet(nn.Module):
             _, rpn_loss_cls_1, rpn_loss_bbox_1 = \
                 self.RCNN_rpn(base_feat_aug_1, im_info,
                               psuedo_boxes_1, list_of_box_num)
-            if self.flip_cons:
+            if self.both_update:
+                # if not flip, use the same boxes as im_aug_1
+                psuedo_boxes_2 = psuedo_boxes_1.clone()
+            if self.flip_cons or self.both_update:
                 _, rpn_loss_cls_2, rpn_loss_bbox_2 = \
                     self.RCNN_rpn(base_feat_aug_2, im_info,
                                   psuedo_boxes_2, list_of_box_num)
 
-            if self.flip_cons:
+            if self.flip_cons or self.both_update:
                 rpn_loss_cls = rpn_loss_cls_1 / 2 + rpn_loss_cls_2 / 2
                 rpn_loss_bbox = rpn_loss_bbox_1 / 2 + rpn_loss_bbox_2 / 2
             else:

@@ -14,6 +14,7 @@ import time
 import contrastive
 
 import numpy as np
+from numpy.lib.type_check import asscalar
 import torch
 import torch.nn as nn
 from model.faster_rcnn_pretrain.resnet import resnet
@@ -104,6 +105,9 @@ def parse_args():
     parser.add_argument('--flip_cons', dest='flip_cons',
                         help='whether to use flip consistency',
                         action='store_true')
+    parser.add_argument('--both_update', dest='both_update',
+                        help='if not flip, whether to update rpn about each images',
+                        action='store_true')
 
 # config region proposal network
     parser.add_argument('--rpn_top_n', dest='rpn_top_n',
@@ -156,6 +160,11 @@ def parse_args():
     if args.flip_cons:
         args.random_rpn = True
         print(" *** : use flip consistency")
+    if args.both_update:
+        assert args.flip_cons is False, \
+            "if use both_update, do not use flip_cons"
+        args.random_rpn = True
+        print(" *** : use both rpn update")
     if args.random_rpn:
         args.share_rpn = True
         print(" *** : use share_rpn")
@@ -334,7 +343,8 @@ if __name__ == '__main__':
                             grad_stop=args.grad_stop,
                             share_rpn=args.share_rpn,
                             random_rpn=args.random_rpn,
-                            flip_cons=args.flip_cons)
+                            flip_cons=args.flip_cons,
+                            both_update=args.both_update)
     elif args.net == 'res50':
         fasterRCNN = resnet(imdb.classes, 50,
                             pretrained=args.without_IN_pretrain,
@@ -344,7 +354,8 @@ if __name__ == '__main__':
                             grad_stop=args.grad_stop,
                             share_rpn=args.share_rpn,
                             random_rpn=args.random_rpn,
-                            flip_cons=args.flip_cons)
+                            flip_cons=args.flip_cons,
+                            both_update=args.both_update)
     elif args.net == 'res152':
         fasterRCNN = resnet(imdb.classes, 152, pretrained=True,
                             use_caffe=False,

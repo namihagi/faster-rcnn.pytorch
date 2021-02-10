@@ -233,7 +233,8 @@ class resnet(_pretrainedNet):
                  fix_backbone=True, temperature=0.1,
                  iou_threshold=0.7, grad_stop=False,
                  share_rpn=False, random_rpn=False,
-                 flip_cons=False, use_caffe=True):
+                 flip_cons=False, use_caffe=True,
+                 both_update=False):
         self.model_path = model_instance[num_layers][1]
         self.dout_base_model = 1024
         self.pretrained = pretrained
@@ -245,7 +246,8 @@ class resnet(_pretrainedNet):
         _pretrainedNet.__init__(self, classes, class_agnostic,
                                 temperature, iou_threshold,
                                 grad_stop, share_rpn,
-                                random_rpn, flip_cons)
+                                random_rpn, flip_cons,
+                                both_update)
 
     def _init_modules(self):
         resnet = model_instance[self.num_layers][0](pretrained=self.pretrained)
